@@ -46,7 +46,17 @@ We have packaged a completely automated, sandboxed script specifically for Macs:
 3. *A Terminal window will open automatically, safely configure a temporary sandbox environment, install dependencies, compile a native macOS **`RemoteViewer.app`**, and clean up all build caches.*
 4. Double-click the generated **`RemoteViewer.app`** to launch it natively just like Slack or Spotify!
 
-### 🐧 Linux / General (Laptop Client)
+### 📦 Ubuntu Desktop (.deb Package)
+To install natively on Ubuntu with complete Apps Menu integration:
+1. Download the **`remote-viewer_1.0.0_amd64.deb`** installer package from our latest GitHub Release.
+2. **Double-click** the `.deb` file in your Ubuntu Files manager to open the App Center and click **Install**.
+3. Or install via terminal:
+   ```bash
+   sudo dpkg -i remote-viewer_1.0.0_amd64.deb
+   ```
+4. Search for **"Remote Screen Viewer"** in your Ubuntu Activities/Apps Menu, and click our gorgeous target-cyan icon to launch instantly!
+
+### 🐧 Linux / General (Source Setup)
 1. Install Python dependencies:
    ```bash
    pip3 install paramiko pywebview Pillow
