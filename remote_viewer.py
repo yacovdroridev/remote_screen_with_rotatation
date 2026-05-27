@@ -295,6 +295,17 @@ def remote_stderr_reader(stderr_stream, running_event):
     except Exception:
         pass
 
+# Thread to read remote capture agent standard error diagnostic logs
+def remote_capture_stderr_reader(stderr_stream, running_event):
+    try:
+        while running_event.is_set():
+            line = stderr_stream.readline()
+            if not line:
+                break
+            print(f"[Remote Capture Error] {line.strip()}")
+    except Exception:
+        pass
+
 # PyInstaller compatibility helper to find bundled data files
 def get_resource_path(relative_path):
     try:
@@ -368,6 +379,51 @@ def cleanup_ssh():
         
     print("[SSH Cleanup] Disconnected from target Raspberry Pi.")
 
+# Helper to check and automatically install missing remote dependencies (xdotool, mss, Pillow)
+def verify_and_install_remote_dependencies(client, username, password):
+    print("[SSH Client] Checking remote dependencies (xdotool, mss, Pillow)...")
+    
+    # 1. Check Python packages (mss, Pillow)
+    _, stdout_py, _ = client.exec_command("python3 -c 'import mss, PIL' 2>/dev/null")
+    if stdout_py.channel.recv_exit_status() != 0:
+        print("[SSH Client] Remote Python dependencies (mss/Pillow) missing. Attempting automatic installation...")
+        
+        # Try pip user installation first
+        pip_cmd = "python3 -m pip install mss Pillow --break-system-packages --user"
+        _, stdout_pip, _ = client.exec_command(pip_cmd)
+        if stdout_pip.channel.recv_exit_status() != 0:
+            print("[SSH Client] Pip installation failed. Attempting system package installation via apt-get...")
+            
+            # Fallback to apt-get
+            if password:
+                escaped_pass = password.replace("'", "'\\''")
+                apt_cmd = f"echo '{escaped_pass}' | sudo -S apt-get update && echo '{escaped_pass}' | sudo -S apt-get install -y python3-pip python3-pil python3-mss"
+            else:
+                apt_cmd = "sudo -n apt-get update && sudo -n apt-get install -y python3-pip python3-pil python3-mss"
+            
+            _, stdout_apt, _ = client.exec_command(apt_cmd)
+            stdout_apt.channel.recv_exit_status()
+        else:
+            print("[SSH Client] Remote Python dependencies installed successfully via pip!")
+            
+    # 2. Check/Install xdotool
+    _, stdout_x, _ = client.exec_command("which xdotool")
+    if stdout_x.channel.recv_exit_status() != 0:
+        print("[SSH Client] 'xdotool' input simulator is missing. Attempting automatic installation...")
+        if password:
+            escaped_pass = password.replace("'", "'\\''")
+            apt_cmd = f"echo '{escaped_pass}' | sudo -S apt-get update && echo '{escaped_pass}' | sudo -S apt-get install -y xdotool"
+        else:
+            apt_cmd = "sudo -n apt-get update && sudo -n apt-get install -y xdotool"
+            
+        _, stdout_apt, _ = client.exec_command(apt_cmd)
+        if stdout_apt.channel.recv_exit_status() == 0:
+            print("[SSH Client] 'xdotool' installed successfully!")
+        else:
+            print("[Warning] Could not install 'xdotool' automatically. Inputs will be disabled unless installed manually.")
+    else:
+        print("[SSH Client] 'xdotool' is already installed.")
+
 # Connect to Raspberry Pi via SSH
 def connect_ssh(host, username, password, key_path, display, quality, fps):
     global ssh_client, ssh_xdotool_stdin, capture_thread, capture_running, active_display, active_quality, active_fps, remote_input_enabled
@@ -409,6 +465,9 @@ def connect_ssh(host, username, password, key_path, display, quality, fps):
         
         # Start capture event flag
         capture_running.set()
+        
+        # Auto-verify and install remote dependencies
+        verify_and_install_remote_dependencies(client, username, password)
         
         # 1. Check if xdotool is installed on remote Pi
         print("[SSH Client] Verifying remote dependencies...")
@@ -454,6 +513,14 @@ def connect_ssh(host, username, password, key_path, display, quality, fps):
             daemon=True
         )
         capture_thread.start()
+        
+        # Start background thread to output remote capture agent errors to laptop console
+        t_cap_err = threading.Thread(
+            target=remote_capture_stderr_reader,
+            args=(c_stderr, capture_running),
+            daemon=True
+        )
+        t_cap_err.start()
         
         print("[SSH Client] Secure tunneling initialized successfully!")
         return True, "ok"
@@ -778,6 +845,14 @@ class StreamingHandler(BaseHTTPRequestHandler):
                     daemon=True
                 )
                 capture_thread.start()
+                
+                # Restart capture stderr reader thread
+                t_cap_err = threading.Thread(
+                    target=remote_capture_stderr_reader,
+                    args=(c_stderr, capture_running),
+                    daemon=True
+                )
+                t_cap_err.start()
                 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
