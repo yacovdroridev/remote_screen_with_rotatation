@@ -1,0 +1,23 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller build outputs
+build/
+dist/
+*.spec
+
+# Connection History File (contains dynamic configuration profiles)
+.remote_viewer_history.json
+~/.remote_viewer_history.json
+
+# Local Environment or Virtual Environments
+.mac_build_env/
+.venv/
+venv/
+ENV/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

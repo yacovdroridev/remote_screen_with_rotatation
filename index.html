@@ -1,0 +1,1783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Antigravity Remote Screen Viewer</title>
+    <!-- Modern Premium Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-color: #0b0d13;
+            --surface-color: rgba(18, 22, 33, 0.7);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --accent-primary: #00f0ff;
+            --accent-secondary: #00e676;
+            --accent-glow: rgba(0, 240, 255, 0.4);
+            --text-main: #f0f4f8;
+            --text-muted: #8a99ad;
+            --glass-blur: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(0, 240, 255, 0.05) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(0, 230, 118, 0.05) 0px, transparent 50%);
+        }
+
+        /* Sleek custom dark scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            transition: background 0.2s;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-primary);
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        /* Hidden image for the MJPEG stream source */
+        #stream-img {
+            display: none;
+        }
+
+        /* Stream Container & Canvas */
+        #viewer-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+            overflow: auto;
+        }
+
+        #stream-canvas {
+            display: block;
+            box-shadow: 0 20px 80px rgba(0, 0, 0, 0.6);
+            transition: box-shadow 0.3s ease;
+            cursor: crosshair;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        /* Floating Glass Panel */
+        .glass-panel {
+            background: var(--surface-color);
+            backdrop-filter: blur(var(--glass-blur));
+            -webkit-backdrop-filter: blur(var(--glass-blur));
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            z-index: 10;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* Header / Logo Panel */
+        #logo-panel {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--accent-secondary);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-secondary);
+            animation: pulse 2s infinite;
+        }
+
+        .logo-text {
+            font-weight: 800;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            background: linear-gradient(45deg, var(--accent-primary), #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Main Control Panel */
+        #controls-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 14px 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding-right: 20px;
+        }
+
+        .control-group:last-child {
+            border-right: none;
+            padding-right: 0;
+        }
+
+        .group-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-right: 6px;
+        }
+
+        /* Premium Buttons */
+        .btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 12px var(--accent-glow);
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+        }
+
+        .btn.active {
+            background: rgba(0, 240, 255, 0.1);
+            border-color: var(--accent-primary);
+            color: var(--accent-primary);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .btn.danger {
+            border-color: #ff5252;
+        }
+        .btn.danger:hover {
+            background: rgba(255, 82, 82, 0.15);
+            border-color: #ff5252;
+            box-shadow: 0 0 12px rgba(255, 82, 82, 0.4);
+        }
+
+        /* Settings Input */
+        .settings-input {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #fff;
+            padding: 6px 10px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            width: 60px;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .settings-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        /* Status & Metrics Panel */
+        #metrics-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 180px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .metric-label {
+            color: var(--text-muted);
+        }
+
+        .metric-val {
+            color: var(--text-main);
+            font-weight: bold;
+        }
+
+        .metric-val.glow {
+            color: var(--accent-primary);
+            text-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
+        }
+
+        /* Settings Toggle */
+        #settings-toggle-btn {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            padding: 10px;
+            border-radius: 50%;
+            z-index: 10;
+        }
+
+        /* Advanced Settings Drawer */
+        #settings-panel {
+            position: fixed;
+            top: 130px;
+            right: -320px; /* Hidden by default */
+            width: 280px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #settings-panel.open {
+            right: 20px;
+        }
+
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .setting-label-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-primary);
+            cursor: pointer;
+            box-shadow: 0 0 8px var(--accent-primary);
+            transition: transform 0.1s;
+        }
+
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Connection Portal Overlay */
+        #connection-portal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(11, 13, 19, 0.95);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.4s ease;
+        }
+
+        .portal-card {
+            width: 440px;
+            padding: 28px;
+            border-radius: 24px;
+            background: rgba(18, 22, 33, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .portal-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            padding-bottom: 12px;
+        }
+
+        .portal-header h2 {
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            background: linear-gradient(45deg, var(--accent-primary), #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .portal-body {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .input-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .input-field label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .portal-input {
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            color: #fff;
+            padding: 10px 14px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 13px;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .portal-input:focus {
+            border-color: var(--accent-primary);
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        /* Connection Portal Progress / Loading */
+        .portal-progress {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px 0;
+            gap: 16px;
+        }
+
+        .progress-step {
+            font-size: 13px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: color 0.3s;
+        }
+
+        .progress-step.active {
+            color: var(--accent-primary);
+            font-weight: 600;
+        }
+
+        .progress-step.done {
+            color: var(--accent-secondary);
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(0, 240, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent-primary);
+            animation: spin 1s ease-in-out infinite;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.1);
+        }
+
+        /* Inputs Warning Banner */
+        #input-warning-banner {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 82, 82, 0.2);
+            border: 1px solid #ff5252;
+            color: #ff5252;
+            padding: 10px 24px;
+            border-radius: 12px;
+            z-index: 100;
+            font-size: 13px;
+            font-weight: 600;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(255, 82, 82, 0.15);
+            letter-spacing: 0.5px;
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0% { border-color: rgba(255, 82, 82, 0.6); }
+            50% { border-color: rgba(255, 82, 82, 1); }
+            100% { border-color: rgba(255, 82, 82, 0.6); }
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(0, 230, 118, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
+        }
+
+        /* Keyboard Focus Indicator */
+        .keyboard-focused {
+            outline: 2px solid var(--accent-primary);
+            box-shadow: 0 0 20px var(--accent-glow) !important;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Connection Portal Dialog -->
+    <div id="connection-portal">
+        <div class="portal-card">
+            <div class="portal-header">
+                <div class="logo-dot" style="background-color: var(--accent-primary); box-shadow: 0 0 10px var(--accent-primary);"></div>
+                <h2>RASPBERRY PI REMOTE CONNECT</h2>
+            </div>
+            
+            <div class="portal-body" id="portal-form">
+                <!-- Recent Connection Chips -->
+                <div id="recent-profiles-container" style="display: none; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Recent Connections</label>
+                    <div id="recent-profiles-list" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 80px; overflow-y: auto; padding-right: 4px;">
+                        <!-- Connection chips will be dynamically rendered here -->
+                    </div>
+                </div>
+
+                <div class="input-field">
+                    <label>SSH Connection Target</label>
+                    <input type="text" class="portal-input" id="conn-target" value="pi@192.168.1.10" placeholder="username@ip_address">
+                </div>
+
+                <!-- Auth Type Toggle Panel -->
+                <div class="input-field">
+                    <label>Authentication Mode</label>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn active" id="auth-pwd-btn" style="flex: 1; justify-content: center; font-size: 11px; height: 32px; padding: 4px;">Password</button>
+                        <button class="btn" id="auth-key-btn" style="flex: 1; justify-content: center; font-size: 11px; height: 32px; padding: 4px;">SSH Key</button>
+                    </div>
+                </div>
+
+                <!-- Password Auth Input -->
+                <div class="input-field" id="field-password">
+                    <label>SSH Password</label>
+                    <input type="password" class="portal-input" id="conn-pass" placeholder="Enter password (leave empty if passwordless)">
+                </div>
+
+                <!-- Key Auth Input -->
+                <div class="input-field" id="field-keypath" style="display: none;">
+                    <label>Private Key Path</label>
+                    <input type="text" class="portal-input" id="conn-key" placeholder="e.g. ~/.ssh/id_rsa (leave empty for default search)">
+                </div>
+
+                <div style="display: flex; gap: 12px;">
+                    <div class="input-field" style="flex: 1;">
+                        <label>Display Target</label>
+                        <input type="text" class="portal-input" id="conn-disp" value=":0" style="font-family: 'JetBrains Mono', monospace; padding: 8px 12px;">
+                    </div>
+                    <div class="input-field" style="flex: 1;">
+                        <label>Initial Rotation</label>
+                        <select class="portal-input" id="conn-rot" style="padding: 8px 12px; height: 38px;">
+                            <option value="0">0° (Normal)</option>
+                            <option value="90">90° (Clockwise)</option>
+                            <option value="180">180° (Inverted)</option>
+                            <option value="270">270° (Counter-CW)</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn active" id="connect-btn" style="width: 100%; justify-content: center; height: 40px; margin-top: 10px; font-size: 13px;">
+                    ⚡ Establish Secure Connection
+                </button>
+            </div>
+
+            <div class="portal-progress" id="portal-loading" style="display: none;">
+                <div class="spinner"></div>
+                <div class="progress-step active" id="step-1">🔑 Establishing SSH connection...</div>
+                <div class="progress-step" id="step-2">📦 Deploying screen capture agent...</div>
+                <div class="progress-step" id="step-3">📺 Starting live screen stream...</div>
+                <div id="conn-error" style="display: none; color: #ff5252; font-size: 13px; text-align: center; margin-top: 10px; line-height: 1.4;"></div>
+                <button class="btn danger" id="cancel-btn" style="margin-top: 15px; display: none;">Retry</button>
+            </div>
+
+            <!-- Guest Request Card (Visible only when an active session is found on Guest page) -->
+            <div class="portal-body" id="portal-guest" style="display: none; flex-direction: column; gap: 12px; padding: 10px 0;">
+                <div style="background-color: rgba(0, 240, 255, 0.1); margin: 0 auto 10px; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 15px rgba(0, 240, 255, 0.15); border: 1px solid var(--accent-primary);">
+                    <span style="font-size: 20px;">🛡️</span>
+                </div>
+                <h3 style="text-align: center; color: var(--text-color); margin: 0; font-size: 15px; letter-spacing: 0.5px;">Active Session Detected</h3>
+                <p style="text-align: center; font-size: 11px; color: var(--text-muted); line-height: 1.4; margin: 0 0 8px;">
+                    An active remote capture session is currently running on the host laptop. Please enter your name to request access to view and control this session.
+                </p>
+                <div class="input-field" style="margin-bottom: 8px;">
+                    <label>Your Name / Identifier</label>
+                    <input type="text" class="portal-input" id="guest-name-input" placeholder="e.g. Associate Mac" style="width: 100%; box-sizing: border-box;">
+                </div>
+                <button class="btn active" id="guest-request-btn" style="width: 100%; justify-content: center; height: 40px;">
+                    🤝 Request Screen Access
+                </button>
+                
+                <!-- Guest Request Progress (Spinner while waiting for Host to click Approve) -->
+                <div id="guest-waiting-container" style="display: none; flex-direction: column; align-items: center; margin-top: 15px; gap: 10px;">
+                    <div class="spinner" style="width: 32px; height: 32px;"></div>
+                    <div style="font-size: 12px; color: var(--accent-primary); font-weight: 500; text-align: center;" id="guest-waiting-text">
+                        Waiting for host approval...
+                    </div>
+                    <div style="font-size: 10px; color: var(--text-muted); text-align: center; line-height: 1.3;">
+                        A popup notification has been displayed on the host's screen. Once approved, you will join the stream automatically!
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tailscale Status Footer -->
+            <div id="tailscale-footer" style="border-top: 1px solid var(--border-color); padding: 12px 16px; margin: 20px -24px -24px -24px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; background: rgba(11, 13, 19, 0.4); border-bottom-left-radius: 16px; border-bottom-right-radius: 16px;">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <span id="tailscale-dot" style="width: 8px; height: 8px; border-radius: 50%; background-color: var(--text-muted); display: inline-block;"></span>
+                    <span id="tailscale-status-text" style="color: var(--text-muted); font-weight: 500;">Checking Tailscale status...</span>
+                </div>
+                <div id="tailscale-actions" style="display: flex; gap: 8px;">
+                    <!-- Action buttons dynamically inserted here -->
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- AnyDesk-style Host Approval Modal Overlay -->
+    <div id="host-approval-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(11, 13, 19, 0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 1000; align-items: center; justify-content: center;">
+        <div class="glass-panel" style="padding: 24px; width: 90%; max-width: 380px; text-align: center; display: flex; flex-direction: column; gap: 15px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); align-items: center;">
+            <div style="font-size: 36px; animation: bounce 1.5s infinite; width: 50px; height: 50px;">🔔</div>
+            <h3 style="color: #fff; margin: 0; font-size: 16px; letter-spacing: 0.5px; text-transform: uppercase;">Guest Connection Request</h3>
+            <p style="font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 0;" id="approval-modal-desc">
+                Guest <strong>'Associate Mac'</strong> (IP: 100.12.34.56) is requesting permission to join and view your screen session.
+            </p>
+            <div style="display: flex; gap: 12px; margin-top: 10px; width: 100%;">
+                <button class="btn" id="btn-deny-guest" style="flex: 1; justify-content: center; height: 38px; background: rgba(255, 82, 82, 0.12); border-color: rgba(255, 82, 82, 0.3); color: #ff5252; font-size: 12px;">
+                    Deny
+                </button>
+                <button class="btn active" id="btn-approve-guest" style="flex: 1; justify-content: center; height: 38px; background: rgba(0, 230, 118, 0.15); border-color: var(--accent-primary); color: var(--accent-primary); font-size: 12px;">
+                    Approve
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dynamic Input Disabled Warning Banner -->
+    <div id="input-warning-banner">
+        ⚠️ Input Redirection Disabled: Please run 'sudo apt install xdotool' on the Raspberry Pi
+    </div>
+
+    <!-- Hidden image for the MJPEG stream source -->
+    <img id="stream-img" src="" alt="MJPEG Source">
+
+    <!-- Screen Render Canvas -->
+    <div id="viewer-container">
+        <canvas id="stream-canvas" tabindex="0"></canvas>
+    </div>
+
+    <!-- Header Logo Panel -->
+    <div class="glass-panel" id="logo-panel">
+        <div class="logo-dot"></div>
+        <div class="logo-text" id="logo-host-lbl">REMOTE VIEWER</div>
+    </div>
+
+    <!-- Live Performance Metrics Panel -->
+    <div class="glass-panel" id="metrics-panel">
+        <div class="metric-row">
+            <span class="metric-label">Status</span>
+            <span class="metric-val" id="status-val" style="color: var(--accent-secondary)">Connected</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Framerate</span>
+            <span class="metric-val glow" id="fps-val">-- FPS</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Bandwidth</span>
+            <span class="metric-val" id="bandwidth-val">-- KB/s</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Latency</span>
+            <span class="metric-val glow" id="latency-val">-- ms</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Native Res</span>
+            <span class="metric-val" id="res-val">-- x --</span>
+        </div>
+    </div>
+
+    <!-- Advanced Settings Trigger -->
+    <button class="glass-panel btn" id="settings-toggle-btn">
+        ⚙️
+    </button>
+
+    <!-- Advanced Settings Drawer -->
+    <div class="glass-panel" id="settings-panel">
+        <h3 style="font-weight: 600; font-size: 15px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 8px;">STREAM SETTINGS</h3>
+        
+        <div class="setting-item">
+            <div class="setting-label-row">
+                <span>JPEG Quality</span>
+                <span id="quality-lbl">75%</span>
+            </div>
+            <input type="range" min="10" max="100" value="75" class="slider" id="quality-slider">
+        </div>
+
+        <div class="setting-item">
+            <div class="setting-label-row">
+                <span>FPS Limit</span>
+                <span id="fps-lbl">15 FPS</span>
+            </div>
+            <input type="range" min="5" max="60" value="15" class="slider" id="fps-slider">
+        </div>
+
+        <button class="btn active" id="view-only-btn" style="justify-content: center; width: 100%;">
+            🎮 Input Enabled
+        </button>
+
+        <button class="btn danger" id="disconnect-btn" style="justify-content: center; width: 100%; margin-top: 10px;">
+            🛑 Disconnect SSH
+        </button>
+    </div>
+
+    <!-- Footer Controls Glass Toolbar -->
+    <div class="glass-panel" id="controls-panel">
+        <!-- Rotation -->
+        <div class="control-group">
+            <span class="group-label">Rotation</span>
+            <button class="btn active" data-rotate="0">0°</button>
+            <button class="btn" data-rotate="90">90°</button>
+            <button class="btn" data-rotate="180">180°</button>
+            <button class="btn" data-rotate="270">270°</button>
+        </div>
+
+        <!-- Scaling -->
+        <div class="control-group">
+            <span class="group-label">Scale</span>
+            <button class="btn active" data-scale="fit">Fit</button>
+            <button class="btn" data-scale="fill">Fill</button>
+            <button class="btn" data-scale="1to1">1:1</button>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="control-group">
+            <button class="btn" id="refresh-btn">🔄 Refresh</button>
+            <button class="btn" id="fs-btn">📺 Fullscreen</button>
+        </div>
+    </div>
+
+    <script>
+        // Core State
+        let rotation = 0; // 0, 90, 180, 270
+        let scaleMode = 'fit'; // fit, fill, 1to1
+        let viewOnly = false;
+        let isFS = false;
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        let totalBytes = 0;
+        let lastBwTime = performance.now();
+        let pingInterval = null;
+
+        // Display Native Dimensions
+        let nativeWidth = 1920;
+        let nativeHeight = 1080;
+
+        // Spacebar and Middle-click Panning States (Adobe Photoshop / Figma Style)
+        let spacePressed = false;
+        let isPanning = false;
+        let startX = 0, startY = 0, scrollLeft = 0, scrollTop = 0;
+        let throttleTimer = null;
+        let isMouseDown = false;
+
+        // Auth Selection elements
+        let authMode = 'pwd'; // pwd or key
+        const authPwdBtn = document.getElementById('auth-pwd-btn');
+        const authKeyBtn = document.getElementById('auth-key-btn');
+        const fieldPassword = document.getElementById('field-password');
+        const fieldKeypath = document.getElementById('field-keypath');
+
+        // Elements
+        const streamImg = document.getElementById('stream-img');
+        const canvas = document.getElementById('stream-canvas');
+        const ctx = canvas.getContext('2d');
+        const overlay = document.getElementById('connection-portal');
+        const portalForm = document.getElementById('portal-form');
+        const portalLoading = document.getElementById('portal-loading');
+        const inputWarningBanner = document.getElementById('input-warning-banner');
+        
+        // Progress steps
+        const step1 = document.getElementById('step-1');
+        const step2 = document.getElementById('step-2');
+        const step3 = document.getElementById('step-3');
+        const connError = document.getElementById('conn-error');
+        const cancelBtn = document.getElementById('cancel-btn');
+
+        // Form Fields
+        const connTarget = document.getElementById('conn-target');
+        const connPass = document.getElementById('conn-pass');
+        const connKey = document.getElementById('conn-key');
+        const connDisp = document.getElementById('conn-disp');
+        const connRot = document.getElementById('conn-rot');
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+
+        // Label Info
+        const logoHostLbl = document.getElementById('logo-host-lbl');
+
+        const fpsValEl = document.getElementById('fps-val');
+        const bwValEl = document.getElementById('bandwidth-val');
+        const latencyValEl = document.getElementById('latency-val');
+        const resValEl = document.getElementById('res-val');
+        
+        const qualitySlider = document.getElementById('quality-slider');
+        const qualityLbl = document.getElementById('quality-lbl');
+        const fpsSlider = document.getElementById('fps-slider');
+        const fpsLbl = document.getElementById('fps-lbl');
+        
+        const viewOnlyBtn = document.getElementById('view-only-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const fsBtn = document.getElementById('fs-btn');
+        const settingsToggleBtn = document.getElementById('settings-toggle-btn');
+        const settingsPanel = document.getElementById('settings-panel');
+        const viewerContainer = document.getElementById('viewer-container');
+
+        // P2P & Tailscale DOM Elements
+        const portalGuest = document.getElementById('portal-guest');
+        const guestNameInput = document.getElementById('guest-name-input');
+        const guestRequestBtn = document.getElementById('guest-request-btn');
+        const guestWaitingContainer = document.getElementById('guest-waiting-container');
+        
+        const tailscaleDot = document.getElementById('tailscale-dot');
+        const tailscaleStatusText = document.getElementById('tailscale-status-text');
+        const tailscaleActions = document.getElementById('tailscale-actions');
+        
+        const hostApprovalModal = document.getElementById('host-approval-modal');
+        const approvalModalDesc = document.getElementById('approval-modal-desc');
+        const btnApproveGuest = document.getElementById('btn-approve-guest');
+        const btnDenyGuest = document.getElementById('btn-deny-guest');
+
+        // Intervals & States
+        let tailscaleInterval = null;
+        let guestStatusInterval = null;
+        let hostApprovalInterval = null;
+        let isOwner = true;
+        let activeApprovalIp = null;
+
+        // Auth toggle management
+        function toggleAuthMode(mode) {
+            authMode = mode;
+            if (mode === 'pwd') {
+                authPwdBtn.classList.add('active');
+                authKeyBtn.classList.remove('active');
+                fieldPassword.style.display = 'flex';
+                fieldKeypath.style.display = 'none';
+            } else {
+                authPwdBtn.classList.remove('active');
+                authKeyBtn.classList.add('active');
+                fieldPassword.style.display = 'none';
+                fieldKeypath.style.display = 'flex';
+            }
+        }
+
+        authPwdBtn.addEventListener('click', () => toggleAuthMode('pwd'));
+        authKeyBtn.addEventListener('click', () => toggleAuthMode('key'));
+
+        // Load connection profiles history
+        function loadHistory() {
+            fetch('/history')
+                .then(res => res.json())
+                .then(profiles => {
+                    const container = document.getElementById('recent-profiles-container');
+                    const list = document.getElementById('recent-profiles-list');
+                    list.innerHTML = '';
+                    
+                    if (profiles && profiles.length > 0) {
+                        container.style.display = 'flex';
+                        profiles.forEach(p => {
+                            const chip = document.createElement('button');
+                            chip.className = 'btn';
+                            chip.style.fontSize = '11px';
+                            chip.style.padding = '4px 10px';
+                            chip.style.borderRadius = '16px';
+                            chip.style.whiteSpace = 'nowrap';
+                            chip.style.overflow = 'hidden';
+                            chip.style.textOverflow = 'ellipsis';
+                            chip.style.maxWidth = '180px';
+                            chip.textContent = p.target;
+                            
+                            chip.addEventListener('click', () => {
+                                connTarget.value = p.target;
+                                connDisp.value = p.display || ':0';
+                                connRot.value = p.rotation || '0';
+                                
+                                if (p.key_path) {
+                                    toggleAuthMode('key');
+                                    connKey.value = p.key_path;
+                                } else {
+                                    toggleAuthMode('pwd');
+                                    connPass.value = '';
+                                }
+                            });
+                            
+                            list.appendChild(chip);
+                        });
+                    } else {
+                        container.style.display = 'none';
+                    }
+                })
+                .catch(err => console.error("Error loading history:", err));
+        }
+
+        // SSH Connect Action
+        connectBtn.addEventListener('click', () => {
+            const target = connTarget.value.trim();
+            const display = connDisp.value.trim();
+            const initRot = parseInt(connRot.value);
+
+            if (!target) {
+                alert("Please enter your SSH target (username@ip).");
+                return;
+            }
+
+            // Show progress screen
+            portalForm.style.display = 'none';
+            portalLoading.style.display = 'flex';
+            connError.style.display = 'none';
+            cancelBtn.style.display = 'none';
+
+            step1.className = 'progress-step active';
+            step2.className = 'progress-step';
+            step3.className = 'progress-step';
+
+            const postBody = {
+                target: target,
+                display: display,
+                quality: parseInt(qualitySlider.value),
+                fps: parseInt(fpsSlider.value)
+            };
+
+            if (authMode === 'pwd') {
+                postBody.password = connPass.value;
+            } else {
+                postBody.key_path = connKey.value.trim();
+            }
+
+            // Post connection parameters
+            fetch('/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(postBody)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    step1.className = 'progress-step done';
+                    step2.className = 'progress-step active';
+                    
+                    // Connection successful on server, give it 1 second to deploy the script
+                    setTimeout(() => {
+                        step2.className = 'progress-step done';
+                        step3.className = 'progress-step active';
+                        
+                        // Set frontend rotation choice
+                        rotation = initRot;
+                        // Select correct rotation button in UI
+                        document.querySelectorAll('[data-rotate]').forEach(btn => {
+                            btn.classList.remove('active');
+                            if (parseInt(btn.dataset.rotate) === rotation) btn.classList.add('active');
+                        });
+
+                        // Start loading stream
+                        logoHostLbl.textContent = target.toUpperCase();
+                        startStream();
+                    }, 1200);
+                } else {
+                    throw new Error(data.message || 'SSH connection failure.');
+                }
+            })
+            .catch(err => {
+                step1.className = 'progress-step';
+                step2.className = 'progress-step';
+                step3.className = 'progress-step';
+                
+                connError.textContent = err.message;
+                connError.style.display = 'block';
+                cancelBtn.style.display = 'inline-block';
+            });
+        });
+
+        // Cancel / Retry Button
+        cancelBtn.addEventListener('click', () => {
+            portalForm.style.display = 'flex';
+            portalLoading.style.display = 'none';
+        });
+
+        // Disconnect Session
+        disconnectBtn.addEventListener('click', () => {
+            fetch('/disconnect', { method: 'POST' })
+                .finally(() => {
+                    // Close settings panel
+                    settingsPanel.classList.remove('open');
+                    
+                    // Stop streaming image
+                    streamImg.src = '';
+                    
+                    // Hide warning banner
+                    inputWarningBanner.style.display = 'none';
+                    
+                    // Reset Canvas
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Reset metrics
+                    fpsValEl.textContent = '-- FPS';
+                    bwValEl.textContent = '-- KB/s';
+                    latencyValEl.textContent = '-- ms';
+                    resValEl.textContent = '-- x --';
+
+                    // Reveal Connection Overlay
+                    overlay.style.opacity = '1';
+                    overlay.style.pointerEvents = 'all';
+                    portalForm.style.display = 'flex';
+                    portalLoading.style.display = 'none';
+                    
+                    // Reload connection profiles chips list
+                    loadHistory();
+                });
+        });
+
+        // Initialize Stream Connection
+        function startStream() {
+            // Set source
+            streamImg.src = '';
+            streamImg.src = '/stream?t=' + Date.now();
+            
+            streamImg.onload = () => {
+                step3.className = 'progress-step done';
+                
+                // Hide connection overlay with smooth transition
+                setTimeout(() => {
+                    overlay.style.opacity = '0';
+                    overlay.style.pointerEvents = 'none';
+                }, 300);
+                
+                // Fetch native resolution and check input diagnostics status
+                fetch('/status')
+                    .then(res => res.json())
+                    .then(data => {
+                        nativeWidth = data.width || 1920;
+                        nativeHeight = data.height || 1080;
+                        resValEl.textContent = `${nativeWidth} x ${nativeHeight}`;
+                        
+                        // Check if input is enabled remotely (presence of xdotool on remote Pi)
+                        if (data.input_enabled === false) {
+                            inputWarningBanner.style.display = 'block';
+                            viewOnlyBtn.classList.remove('active');
+                            viewOnlyBtn.style.borderColor = '#ff5252';
+                            viewOnlyBtn.style.color = '#ff5252';
+                            viewOnlyBtn.textContent = '⚠️ Inputs Offline';
+                            viewOnly = true;
+                        } else {
+                            inputWarningBanner.style.display = 'none';
+                            viewOnly = false;
+                            viewOnlyBtn.classList.add('active');
+                            viewOnlyBtn.style.borderColor = '';
+                            viewOnlyBtn.style.color = '';
+                            viewOnlyBtn.textContent = '🎮 Inputs Enabled';
+                        }
+                        
+                        applyScaling();
+                    })
+                    .catch(err => console.error("Error reading status:", err));
+            };
+
+            streamImg.onerror = () => {
+                console.error("Stream disconnect detected. Retrying...");
+                setTimeout(startStream, 1000);
+            };
+        }
+
+        // Canvas Drawing and Rotation Engine
+        function drawCanvas() {
+            if (!streamImg.complete || streamImg.naturalWidth === 0) {
+                requestAnimationFrame(drawCanvas);
+                return;
+            }
+
+            const imgWidth = streamImg.naturalWidth;
+            const imgHeight = streamImg.naturalHeight;
+            
+            // Update native resolution dynamically if it changes
+            if (imgWidth !== nativeWidth || imgHeight !== nativeHeight) {
+                nativeWidth = imgWidth;
+                nativeHeight = imgHeight;
+                resValEl.textContent = `${nativeWidth} x ${nativeHeight}`;
+            }
+
+            // Determine dimensions based on rotation
+            const is90or270 = (rotation === 90 || rotation === 270);
+            const targetWidth = is90or270 ? imgHeight : imgWidth;
+            const targetHeight = is90or270 ? imgWidth : imgHeight;
+
+            // Set drawing buffer resolution matching the rotated dimensions
+            if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+                canvas.width = targetWidth;
+                canvas.height = targetHeight;
+                applyScaling();
+            }
+
+            // Apply transformations
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+
+            // Center of the canvas
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate((rotation * Math.PI) / 180);
+            
+            // Draw original image centered
+            ctx.drawImage(streamImg, -imgWidth / 2, -imgHeight / 2);
+            ctx.restore();
+
+            // Calculate Performance Metrics
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFrameTime >= 1000) {
+                const fps = Math.round((frameCount * 1000) / (now - lastFrameTime));
+                fpsValEl.textContent = `${fps} FPS`;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+
+            // Estimate Bandwidth (Approximate based on FPS and resolution)
+            if (now - lastBwTime >= 1000) {
+                const estBytesPerFrame = (imgWidth * imgHeight * 3 * (qualitySlider.value / 100) * 0.05); // Rough compression estimate
+                const bandwidthKb = Math.round((fpsValEl.textContent.split(' ')[0] * estBytesPerFrame) / 1024);
+                bwValEl.textContent = isNaN(bandwidthKb) ? '0 KB/s' : `${bandwidthKb} KB/s`;
+                lastBwTime = now;
+            }
+
+            requestAnimationFrame(drawCanvas);
+        }
+
+        // Apply Scaling Mode styles to the canvas container (Restoring full panning scrolling!)
+        function applyScaling() {
+            canvas.style.transform = 'none';
+            canvas.style.position = 'relative';
+            canvas.style.margin = '';
+
+            if (scaleMode === 'fit') {
+                viewerContainer.style.display = 'flex';
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvas.style.maxWidth = '100%';
+                canvas.style.maxHeight = '100%';
+                canvas.style.objectFit = 'contain';
+                viewerContainer.style.overflow = 'hidden';
+            } else if (scaleMode === 'fill') {
+                viewerContainer.style.display = 'flex';
+                canvas.style.width = '100%';
+                canvas.style.height = '100%';
+                canvas.style.maxWidth = '100%';
+                canvas.style.maxHeight = '100%';
+                canvas.style.objectFit = 'fill';
+                viewerContainer.style.overflow = 'hidden';
+            } else if (scaleMode === '1to1') {
+                // Switch display to block in 1:1 scale to resolve native browser flexbox scrolling offset bugs!
+                viewerContainer.style.display = 'block';
+                canvas.style.display = 'block';
+                canvas.style.margin = 'auto'; // Perfectly center if smaller than screen; scrollable if larger!
+                canvas.style.width = `${canvas.width}px`;
+                canvas.style.height = `${canvas.height}px`;
+                canvas.style.maxWidth = 'none';
+                canvas.style.maxHeight = 'none';
+                canvas.style.objectFit = 'none';
+                viewerContainer.style.overflow = 'auto';
+            }
+        }
+
+        // Coordinate Remapping: maps rotated client click to raw :0 resolution
+        function getRawCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            
+            // Get click offset on the canvas element scale
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            // Map from CSS display size back to canvas internal pixel buffer size
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const x_r = clickX * scaleX;
+            const y_r = clickY * scaleY;
+
+            // Apply inverse rotation matrix to map back to native width/height display
+            let x_o = 0;
+            let y_o = 0;
+            const W = nativeWidth;
+            const H = nativeHeight;
+
+            switch (rotation) {
+                case 0:
+                    x_o = x_r;
+                    y_o = y_r;
+                    break;
+                case 90:
+                    x_o = y_r;
+                    y_o = H - 1 - x_r;
+                    break;
+                case 180:
+                    x_o = W - 1 - x_r;
+                    y_o = H - 1 - y_r;
+                    break;
+                case 270:
+                    x_o = W - 1 - y_r;
+                    y_o = x_r;
+                    break;
+            }
+
+            // Safeguard bounds
+            return {
+                x: Math.max(0, Math.min(W - 1, Math.round(x_o))),
+                y: Math.max(0, Math.min(H - 1, Math.round(y_o)))
+            };
+        }
+
+        // Send Input Payload to Pi
+        function sendInput(payload) {
+            if (viewOnly) return;
+            
+            fetch('/input', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            }).catch(err => console.error("Input delivery failed:", err));
+        }
+
+        // Spacebar Panning Keyboard Listeners
+        window.addEventListener('keydown', (e) => {
+            // Check if user is typing in forms to avoid panning triggers
+            const activeTag = document.activeElement.tagName.toLowerCase();
+            if (activeTag === 'input' || activeTag === 'select') return;
+
+            if (e.key === ' ') {
+                e.preventDefault();
+                if (!spacePressed) {
+                    spacePressed = true;
+                    canvas.style.cursor = 'grab';
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.key === ' ') {
+                spacePressed = false;
+                isPanning = false;
+                canvas.style.cursor = 'crosshair';
+            }
+        });
+
+        // Mouse Event Listeners
+        canvas.addEventListener('mousedown', (e) => {
+            canvas.focus();
+            
+            // Check if space-grabbing OR middle-click dragging (button 1) is active
+            if (spacePressed || e.button === 1) {
+                isPanning = true;
+                canvas.style.cursor = 'grabbing';
+                startX = e.clientX;
+                startY = e.clientY;
+                scrollLeft = viewerContainer.scrollLeft;
+                scrollTop = viewerContainer.scrollTop;
+                e.preventDefault();
+                return;
+            }
+
+            isMouseDown = true;
+            const coords = getRawCoords(e);
+            
+            let btn = 1; // Left
+            if (e.button === 1) btn = 2; // Middle
+            if (e.button === 2) btn = 3; // Right
+
+            sendInput({
+                type: 'mousedown',
+                x: coords.x,
+                y: coords.y,
+                button: btn
+            });
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isPanning) {
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                viewerContainer.scrollLeft = scrollLeft - dx;
+                viewerContainer.scrollTop = scrollTop - dy;
+                e.preventDefault();
+                return;
+            }
+
+            if (viewOnly) return;
+            if (!isMouseDown) return; // IGNORE all mousemove events when mouse is UP (Hovering) to prevent thread/GIL flooding!
+
+            // Throttle drag events to ~70ms (saves enormous CPU, network, and thread queue lag!)
+            if (throttleTimer) return;
+            throttleTimer = setTimeout(() => {
+                throttleTimer = null;
+            }, 70);
+
+            const coords = getRawCoords(e);
+            sendInput({
+                type: 'move',
+                x: coords.x,
+                y: coords.y
+            });
+        });
+
+        window.addEventListener('mouseup', (e) => {
+            if (isPanning) {
+                isPanning = false;
+                canvas.style.cursor = spacePressed ? 'grab' : 'crosshair';
+                return;
+            }
+
+            isMouseDown = false;
+            const coords = getRawCoords(e);
+            let btn = 1;
+            if (e.button === 1) btn = 2;
+            if (e.button === 2) btn = 3;
+
+            sendInput({
+                type: 'mouseup',
+                x: coords.x,
+                y: coords.y,
+                button: btn
+            });
+        });
+
+        // Capture Scroll Wheel Events and Forward to Remote Pi
+        canvas.addEventListener('wheel', (e) => {
+            // Forward scroll events as button 4 (scroll up) and button 5 (scroll down) to Pi
+            // Forward if not in Space panning, or always if fit mode, or if holding Ctrl
+            if (scaleMode === 'fit' || !spacePressed) {
+                e.preventDefault();
+                const btn = e.deltaY < 0 ? 4 : 5; // 4 = Up, 5 = Down
+                const coords = getRawCoords(e);
+                
+                sendInput({
+                    type: 'click',
+                    x: coords.x,
+                    y: coords.y,
+                    button: btn
+                });
+            }
+        }, { passive: false });
+
+        // Prevent right click menu on stream
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        // Keyboard Event Listeners (for standard typings)
+        canvas.addEventListener('keydown', (e) => {
+            if (viewOnly || e.key === ' ') return; // Let space panning work separately
+            e.preventDefault();
+
+            const keyMap = {
+                'Enter': 'Return',
+                'Tab': 'Tab',
+                'Backspace': 'BackSpace',
+                'Escape': 'Escape',
+                'ArrowUp': 'Up',
+                'ArrowDown': 'Down',
+                'ArrowLeft': 'Left',
+                'ArrowRight': 'Right',
+                'Control': 'Control_L',
+                'Shift': 'Shift_L',
+                'Alt': 'Alt_L',
+                'Meta': 'Super_L',
+            };
+
+            const xkey = keyMap[e.key] || e.key;
+            sendInput({
+                type: 'keydown',
+                key: xkey
+            });
+        });
+
+        canvas.addEventListener('keyup', (e) => {
+            if (viewOnly || e.key === ' ') return;
+            e.preventDefault();
+            
+            const keyMap = {
+                'Enter': 'Return',
+                'Tab': 'Tab',
+                'Backspace': 'BackSpace',
+                'Escape': 'Escape',
+                'ArrowUp': 'Up',
+                'ArrowDown': 'Down',
+                'ArrowLeft': 'Left',
+                'ArrowRight': 'Right',
+                'Control': 'Control_L',
+                'Shift': 'Shift_L',
+                'Alt': 'Alt_L',
+                'Meta': 'Super_L',
+            };
+
+            const xkey = keyMap[e.key] || e.key;
+            sendInput({
+                type: 'keyup',
+                key: xkey
+            });
+        });
+
+        // Style keyboard focus state
+        canvas.addEventListener('focus', () => canvas.classList.add('keyboard-focused'));
+        canvas.addEventListener('blur', () => canvas.classList.remove('keyboard-focused'));
+
+        // Handle Touch Events (for Tablet / Phone control)
+        canvas.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) {
+                const touch = e.touches[0];
+                const simulatedEvent = {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY,
+                    button: 1
+                };
+                const coords = getRawCoords(simulatedEvent);
+                sendInput({
+                    type: 'mousedown',
+                    x: coords.x,
+                    y: coords.y,
+                    button: 1
+                });
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            const simulatedEvent = {
+                clientX: e.changedTouches[0].clientX,
+                clientY: e.changedTouches[0].clientY,
+                button: 1
+            };
+            const coords = getRawCoords(simulatedEvent);
+            sendInput({
+                type: 'mouseup',
+                x: coords.x,
+                y: coords.y,
+                button: 1
+            });
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 1) {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const simulatedEvent = {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                };
+                const coords = getRawCoords(simulatedEvent);
+                sendInput({
+                    type: 'move',
+                    x: coords.x,
+                    y: coords.y
+                });
+            }
+        });
+
+        // Control Panel Listeners
+        // 1. Rotation Selector
+        document.querySelectorAll('[data-rotate]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('[data-rotate]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                rotation = parseInt(btn.dataset.rotate);
+                applyScaling();
+            });
+        });
+
+        // 2. Scale Selector
+        document.querySelectorAll('[data-scale]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('[data-scale]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                scaleMode = btn.dataset.scale;
+                applyScaling();
+            });
+        });
+
+        // Settings Toggle
+        settingsToggleBtn.addEventListener('click', () => {
+            settingsPanel.classList.toggle('open');
+        });
+
+        // Sliders & Text Updates
+        qualitySlider.addEventListener('input', (e) => {
+            qualityLbl.textContent = `${e.target.value}%`;
+            updateServerSettings();
+        });
+
+        fpsSlider.addEventListener('input', (e) => {
+            fpsLbl.textContent = `${e.target.value} FPS`;
+            updateServerSettings();
+        });
+
+        function updateServerSettings() {
+            fetch('/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    quality: parseInt(qualitySlider.value),
+                    fps: parseInt(fpsSlider.value)
+                })
+            }).catch(err => console.error("Error updating settings:", err));
+        }
+
+        // View Only Mode
+        viewOnlyBtn.addEventListener('click', () => {
+            viewOnly = !viewOnly;
+            if (viewOnly) {
+                viewOnlyBtn.classList.remove('active');
+                viewOnlyBtn.textContent = '👁️ View Only';
+                canvas.blur();
+            } else {
+                viewOnlyBtn.classList.add('active');
+                viewOnlyBtn.textContent = '🎮 Inputs Enabled';
+            }
+        });
+
+        // Fullscreen Mode
+        fsBtn.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen()
+                    .then(() => {
+                        isFS = true;
+                        fsBtn.textContent = '📺 Exit FS';
+                    })
+                    .catch(err => console.error(err));
+            } else {
+                document.exitFullscreen()
+                    .then(() => {
+                        isFS = false;
+                        fsBtn.textContent = '📺 Fullscreen';
+                    });
+            }
+        });
+
+        refreshBtn.addEventListener('click', () => {
+            startStream();
+        });
+
+        // Ping / Latency check loop
+        function measureLatency() {
+            if (overlay.style.opacity === '1') return; // Don't check when connection overlay is up
+            
+            const start = performance.now();
+            fetch('/status')
+                .then(res => res.json())
+                .then(() => {
+                    const latency = Math.round(performance.now() - start);
+                    latencyValEl.textContent = `${latency} ms`;
+                })
+                .catch(() => {
+                    latencyValEl.innerHTML = '<span style="color: #ff5252">Timeout</span>';
+                });
+        }
+
+        // Setup Window Resizing
+        window.addEventListener('resize', () => {
+            applyScaling();
+        });
+
+        // Check and update Tailscale integration status panel
+        function updateTailscaleStatus() {
+            fetch('/tailscale/status')
+                .then(res => res.json())
+                .then(data => {
+                    tailscaleActions.innerHTML = '';
+                    
+                    if (!data.installed) {
+                        tailscaleDot.style.backgroundColor = '#ff5252'; // Red
+                        tailscaleStatusText.textContent = 'Tailscale is not installed.';
+                        
+                        const installBtn = document.createElement('button');
+                        installBtn.className = 'btn active';
+                        installBtn.style.fontSize = '10px';
+                        installBtn.style.padding = '2px 8px';
+                        installBtn.style.height = '24px';
+                        installBtn.textContent = 'Install Tailscale';
+                        installBtn.addEventListener('click', () => {
+                            installBtn.disabled = true;
+                            installBtn.textContent = 'Installing...';
+                            tailscaleStatusText.textContent = 'Installing Tailscale mesh VPN daemon... Please wait...';
+                            fetch('/tailscale/install', { method: 'POST' })
+                                .then(() => {
+                                    setTimeout(updateTailscaleStatus, 8000); // Poll again in 8s
+                                });
+                        });
+                        tailscaleActions.appendChild(installBtn);
+                    } else if (!data.connected) {
+                        tailscaleDot.style.backgroundColor = '#ffc107'; // Amber
+                        tailscaleStatusText.textContent = 'Disconnected from Tailnet mesh VPN.';
+                        
+                        if (data.auth_url) {
+                            const authBtn = document.createElement('button');
+                            authBtn.className = 'btn active';
+                            authBtn.style.fontSize = '10px';
+                            authBtn.style.padding = '2px 8px';
+                            authBtn.style.height = '24px';
+                            authBtn.style.backgroundColor = '#00e676';
+                            authBtn.style.borderColor = '#00e676';
+                            authBtn.textContent = '🔑 Authorize Account';
+                            authBtn.addEventListener('click', () => {
+                                window.open(data.auth_url, '_blank');
+                            });
+                            tailscaleActions.appendChild(authBtn);
+                        } else {
+                            const loginBtn = document.createElement('button');
+                            loginBtn.className = 'btn active';
+                            loginBtn.style.fontSize = '10px';
+                            loginBtn.style.padding = '2px 8px';
+                            loginBtn.style.height = '24px';
+                            loginBtn.textContent = 'Connect Tailscale';
+                            loginBtn.addEventListener('click', () => {
+                                loginBtn.disabled = true;
+                                loginBtn.textContent = 'Authenticating...';
+                                fetch('/tailscale/login', { method: 'POST' })
+                                    .then(() => {
+                                        if (tailscaleInterval) clearInterval(tailscaleInterval);
+                                        tailscaleInterval = setInterval(updateTailscaleStatus, 2000);
+                                        updateTailscaleStatus();
+                                    });
+                            });
+                            tailscaleActions.appendChild(loginBtn);
+                        }
+                    } else {
+                        tailscaleDot.style.backgroundColor = '#00e676'; // Green
+                        tailscaleStatusText.textContent = `Mesh Connected: ${data.name || 'Device'} (${data.ip})`;
+                        if (tailscaleInterval) {
+                            clearInterval(tailscaleInterval);
+                            tailscaleInterval = setInterval(updateTailscaleStatus, 10000);
+                        }
+                    }
+                })
+                .catch(err => console.error("Error fetching Tailscale status:", err));
+        }
+
+        // Guest Connection Request Listener
+        guestRequestBtn.addEventListener('click', () => {
+            const name = guestNameInput.value.trim();
+            if (!name) {
+                alert("Please enter your name to request access.");
+                return;
+            }
+            
+            guestRequestBtn.disabled = true;
+            guestNameInput.disabled = true;
+            guestRequestBtn.textContent = 'Submitting Request...';
+            
+            fetch('/guest/request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            })
+            .then(res => res.json())
+            .then(data => {
+                guestWaitingContainer.style.display = 'flex';
+                guestRequestBtn.style.display = 'none';
+                
+                // Poll check status every 2 seconds
+                guestStatusInterval = setInterval(() => {
+                    fetch('/guest/check_status')
+                        .then(r => r.json())
+                        .then(s => {
+                            if (s.approved) {
+                                clearInterval(guestStatusInterval);
+                                // Access granted! Redirect to live screen
+                                overlay.style.opacity = '0';
+                                setTimeout(() => {
+                                    overlay.style.display = 'none';
+                                    overlay.style.opacity = '1';
+                                    connectSuccess(); // Starts stream
+                                }, 300);
+                            }
+                        });
+                }, 2000);
+            })
+            .catch(err => {
+                console.error("Error submitting guest request:", err);
+                guestRequestBtn.disabled = false;
+                guestNameInput.disabled = false;
+                guestRequestBtn.textContent = '🤝 Request Screen Access';
+            });
+        });
+
+        // Host dynamic Guest approval loop
+        function checkGuestRequests() {
+            if (hostApprovalModal.style.display === 'flex') return;
+            
+            fetch('/guest/active_requests')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.requests && data.requests.length > 0) {
+                        const req = data.requests[0];
+                        activeApprovalIp = req.ip;
+                        approvalModalDesc.innerHTML = `Guest <strong>'${req.name}'</strong> (IP: ${req.ip}) is requesting permission to view and control your active screen session.`;
+                        hostApprovalModal.style.display = 'flex';
+                    }
+                })
+                .catch(err => console.error("Error checking guest requests:", err));
+        }
+
+        // Host Approval Modal Actions
+        btnApproveGuest.addEventListener('click', () => {
+            if (!activeApprovalIp) return;
+            fetch('/guest/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: activeApprovalIp, approve: true })
+            }).then(() => {
+                hostApprovalModal.style.display = 'none';
+                activeApprovalIp = null;
+            });
+        });
+
+        btnDenyGuest.addEventListener('click', () => {
+            if (!activeApprovalIp) return;
+            fetch('/guest/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: activeApprovalIp, approve: false })
+            }).then(() => {
+                hostApprovalModal.style.display = 'none';
+                activeApprovalIp = null;
+            });
+        });
+
+        // Core initialization on page load
+        function initApp() {
+            fetch('/status')
+                .then(res => res.json())
+                .then(data => {
+                    isOwner = data.is_owner;
+                    
+                    if (data.connected) {
+                        if (isOwner || data.approved) {
+                            overlay.style.display = 'none';
+                            connectSuccess();
+                            if (isOwner) {
+                                hostApprovalInterval = setInterval(checkGuestRequests, 3000);
+                            }
+                        } else {
+                            portalForm.style.display = 'none';
+                            portalGuest.style.display = 'flex';
+                        }
+                    } else {
+                        if (isOwner) {
+                            loadHistory();
+                        } else {
+                            portalForm.style.display = 'none';
+                            portalGuest.style.display = 'flex';
+                            guestRequestBtn.disabled = true;
+                            guestRequestBtn.textContent = '⚠️ Waiting for host connection...';
+                            
+                            let hostWait = setInterval(() => {
+                                fetch('/status')
+                                    .then(r => r.json())
+                                    .then(statusData => {
+                                        if (statusData.connected) {
+                                            clearInterval(hostWait);
+                                            guestRequestBtn.disabled = false;
+                                            guestRequestBtn.textContent = '🤝 Request Screen Access';
+                                        }
+                                    });
+                            }, 3000);
+                        }
+                    }
+                    
+                    updateTailscaleStatus();
+                    tailscaleInterval = setInterval(updateTailscaleStatus, 5000);
+                });
+        }
+
+        // On Load Initialization
+        drawCanvas();
+        applyScaling();
+        initApp();
+        
+        // Start latency monitoring
+        pingInterval = setInterval(measureLatency, 2000);
+    </script>
+</body>
+</html>
