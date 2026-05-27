@@ -21,3 +21,7 @@ ENV/
 # OS-specific files
 .DS_Store
 Thumbs.db
+
+# Compiled distributable binaries and archives
+*.deb
+*.zip
