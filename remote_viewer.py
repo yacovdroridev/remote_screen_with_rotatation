@@ -24,6 +24,7 @@ ssh_xdotool_stdin = None
 capture_thread = None
 capture_running = threading.Event()
 remote_input_enabled = False
+remote_xauthority = "~/.Xauthority"
 
 active_display = ":0"
 active_quality = 75
@@ -142,7 +143,9 @@ os.environ['DISPLAY'] = '{display}'
 try:
     import mss
     sct = mss.mss()
-except Exception:
+except Exception as e:
+    sys.stderr.write(f"[Remote Capture Error] mss init failed: {{e}}\\n")
+    sys.stderr.flush()
     sct = None
 from PIL import Image
 
@@ -162,13 +165,17 @@ while True:
             monitor = sct.monitors[1]
             sct_img = sct.grab(monitor)
             img = Image.frombytes('RGB', sct_img.size, sct_img.bgra, 'raw', 'BGRX')
-        except Exception:
+        except Exception as e:
+            sys.stderr.write(f"[Remote Capture Error] mss grab failed: {{e}}\\n")
+            sys.stderr.flush()
             pass
     if not img:
         try:
             from PIL import ImageGrab
             img = ImageGrab.grab()
-        except Exception:
+        except Exception as e:
+            sys.stderr.write(f"[Remote Capture Error] ImageGrab grab failed: {{e}}\\n")
+            sys.stderr.flush()
             pass
     if not img:
         try:
@@ -176,7 +183,12 @@ while True:
             res = subprocess.run(['grim', '-'], capture_output=True)
             if res.returncode == 0:
                 img = Image.open(io.BytesIO(res.stdout))
-        except Exception:
+            else:
+                sys.stderr.write(f"[Remote Capture Error] grim failed code {{res.returncode}}\\n")
+                sys.stderr.flush()
+        except Exception as e:
+            sys.stderr.write(f"[Remote Capture Error] grim failed: {{e}}\\n")
+            sys.stderr.flush()
             pass
             
     if img:
@@ -426,7 +438,7 @@ def verify_and_install_remote_dependencies(client, username, password):
 
 # Connect to Raspberry Pi via SSH
 def connect_ssh(host, username, password, key_path, display, quality, fps):
-    global ssh_client, ssh_xdotool_stdin, capture_thread, capture_running, active_display, active_quality, active_fps, remote_input_enabled
+    global ssh_client, ssh_xdotool_stdin, capture_thread, capture_running, active_display, active_quality, active_fps, remote_input_enabled, remote_xauthority
     
     # Secure cleanup first
     cleanup_ssh()
@@ -469,6 +481,16 @@ def connect_ssh(host, username, password, key_path, display, quality, fps):
         # Auto-verify and install remote dependencies
         verify_and_install_remote_dependencies(client, username, password)
         
+        # Detect correct Xauthority path dynamically on the remote system (e.g., GDM vs home directory)
+        _, stdout_xauth, _ = client.exec_command(
+            "if [ -f /run/user/$(id -u)/gdm/Xauthority ]; then echo /run/user/$(id -u)/gdm/Xauthority; else echo ~/.Xauthority; fi"
+        )
+        remote_xauthority = stdout_xauth.read().decode().strip()
+        if not remote_xauthority:
+            home_dir = f"/home/{username}" if username != "root" else "/root"
+            remote_xauthority = f"{home_dir}/.Xauthority"
+        print(f"[SSH Client] Dynamic Xauthority resolved to: {remote_xauthority}")
+        
         # 1. Check if xdotool is installed on remote Pi
         print("[SSH Client] Verifying remote dependencies...")
         stdin_chk, stdout_chk, stderr_chk = client.exec_command("which xdotool")
@@ -483,10 +505,7 @@ def connect_ssh(host, username, password, key_path, display, quality, fps):
         else:
             # 2. Resolve Xauthority dynamically and spawn persistent input simulator
             print("[SSH Client] Booting remote persistent xdotool session...")
-            home_dir = f"/home/{username}" if username != "root" else "/root"
-            xauth = f"{home_dir}/.Xauthority"
-            
-            xdotool_cmd = f"DISPLAY={display} XAUTHORITY={xauth} xdotool -"
+            xdotool_cmd = f"DISPLAY={display} XAUTHORITY={remote_xauthority} xdotool -"
             stdin, stdout, stderr = client.exec_command(xdotool_cmd)
             ssh_xdotool_stdin = stdin
             remote_input_enabled = True
@@ -502,7 +521,7 @@ def connect_ssh(host, username, password, key_path, display, quality, fps):
         # 3. Deploy unbuffered Python capture agent
         print("[SSH Client] Launching remote unbuffered capture agent...")
         b64_code = get_remote_capture_code(display, quality, fps)
-        cmd = f"python3 -u -c \"import base64; exec(base64.b64decode('{b64_code}').decode())\""
+        cmd = f"DISPLAY={display} XAUTHORITY={remote_xauthority} python3 -u -c \"import base64; exec(base64.b64decode('{b64_code}').decode())\""
         
         c_stdin, c_stdout, c_stderr = client.exec_command(cmd)
         
@@ -644,7 +663,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
             self.send_error(404, "File not found")
 
     def do_POST(self):
-        global ssh_xdotool_stdin, ssh_client, active_quality, active_fps, active_display
+        global ssh_xdotool_stdin, ssh_client, active_quality, active_fps, active_display, remote_xauthority
         client_ip = self.client_address[0]
         
         if self.path == "/connect":
@@ -833,7 +852,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
                 
                 # Re-deploy agent with new parameters
                 b64_code = get_remote_capture_code(active_display, active_quality, active_fps)
-                cmd = f"python3 -u -c \"import base64; exec(base64.b64decode('{b64_code}').decode())\""
+                cmd = f"DISPLAY={active_display} XAUTHORITY={remote_xauthority} python3 -u -c \"import base64; exec(base64.b64decode('{b64_code}').decode())\""
                 
                 c_stdin, c_stdout, c_stderr = ssh_client.exec_command(cmd)
                 
