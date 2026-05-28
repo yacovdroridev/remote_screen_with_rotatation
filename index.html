@@ -712,7 +712,7 @@
 
     <!-- Dynamic Input Disabled Warning Banner -->
     <div id="input-warning-banner">
-        ⚠️ Input Redirection Disabled: Please run 'sudo apt install xdotool' on the Raspberry Pi
+        ⚠️ Input Redirection Disabled: Please install 'pyautogui' on the remote machine.
     </div>
 
     <!-- Hidden image for the MJPEG stream source -->
@@ -947,6 +947,22 @@
                     
                     if (profiles && profiles.length > 0) {
                         container.style.display = 'flex';
+                        
+                        // Auto-populate connection form with the most recent profile on load
+                        if (!connTarget.value.trim()) {
+                            const lastP = profiles[0];
+                            connTarget.value = lastP.target || '';
+                            connDisp.value = lastP.display || ':0';
+                            connRot.value = lastP.rotation || '0';
+                            if (lastP.key_path) {
+                                toggleAuthMode('key');
+                                connKey.value = lastP.key_path;
+                            } else {
+                                toggleAuthMode('pwd');
+                                connPass.value = '';
+                            }
+                        }
+                        
                         profiles.forEach(p => {
                             const chip = document.createElement('button');
                             chip.className = 'btn';
@@ -1122,7 +1138,7 @@
                         nativeHeight = data.height || 1080;
                         resValEl.textContent = `${nativeWidth} x ${nativeHeight}`;
                         
-                        // Check if input is enabled remotely (presence of xdotool on remote Pi)
+                        // Check if input is enabled remotely (presence of pyautogui on remote host)
                         if (data.input_enabled === false) {
                             inputWarningBanner.style.display = 'block';
                             viewOnlyBtn.classList.remove('active');
