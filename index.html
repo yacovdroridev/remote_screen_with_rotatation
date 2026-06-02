@@ -499,6 +499,59 @@
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-8px); }
         }
+
+        /* HUD Hide/Show UI Mode Styles */
+        body.hud-hidden #logo-panel {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(-30px) !important;
+        }
+        body.hud-hidden #metrics-panel {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translateY(-30px) !important;
+        }
+        body.hud-hidden #settings-toggle-btn {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translate(30px, 0) !important;
+        }
+        body.hud-hidden #settings-panel {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translate(320px, 0) !important;
+        }
+        body.hud-hidden #controls-panel {
+            opacity: 0 !important;
+            pointer-events: none !important;
+            transform: translate(-50%, 30px) !important;
+        }
+        
+        #hud-restore-btn {
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(20px);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 10px 14px;
+            border-radius: 12px;
+            font-size: 13px;
+            gap: 6px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+        body.hud-hidden #hud-restore-btn {
+            opacity: 0.7;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
+        body.hud-hidden #hud-restore-btn:hover {
+            opacity: 1;
+            box-shadow: 0 0 15px var(--accent-glow);
+            border-color: var(--accent-primary);
+        }
     </style>
 </head>
 <body>
@@ -723,6 +776,11 @@
         <canvas id="stream-canvas" tabindex="0"></canvas>
     </div>
 
+    <!-- Floating Restore HUD Button -->
+    <button id="hud-restore-btn" class="glass-panel btn">
+        👁️ Show Interface
+    </button>
+
     <!-- Header Logo Panel -->
     <div class="glass-panel" id="logo-panel">
         <div class="logo-dot"></div>
@@ -808,6 +866,7 @@
 
         <!-- Quick actions -->
         <div class="control-group">
+            <button class="btn" id="hud-toggle-btn">👁️ Hide UI</button>
             <button class="btn" id="refresh-btn">🔄 Refresh</button>
             <button class="btn" id="fs-btn">📺 Fullscreen</button>
             <button class="btn" id="help-toggle-btn">❓ Help</button>
@@ -818,6 +877,7 @@
         // Core State
         let rotation = 0; // 0, 90, 180, 270
         let scaleMode = 'fit'; // fit, fill, 1to1
+        let zoomScale = 1.0;
         let viewOnly = false;
         let isFS = false;
         let lastFrameTime = performance.now();
@@ -888,6 +948,8 @@
         const settingsToggleBtn = document.getElementById('settings-toggle-btn');
         const settingsPanel = document.getElementById('settings-panel');
         const viewerContainer = document.getElementById('viewer-container');
+        const hudToggleBtn = document.getElementById('hud-toggle-btn');
+        const hudRestoreBtn = document.getElementById('hud-restore-btn');
 
         // P2P & Tailscale DOM Elements
         const portalGuest = document.getElementById('portal-guest');
@@ -1255,8 +1317,8 @@
                 viewerContainer.style.display = 'block';
                 canvas.style.display = 'block';
                 canvas.style.margin = 'auto'; // Perfectly center if smaller than screen; scrollable if larger!
-                canvas.style.width = `${canvas.width}px`;
-                canvas.style.height = `${canvas.height}px`;
+                canvas.style.width = `${canvas.width * zoomScale}px`;
+                canvas.style.height = `${canvas.height * zoomScale}px`;
                 canvas.style.maxWidth = 'none';
                 canvas.style.maxHeight = 'none';
                 canvas.style.objectFit = 'none';
@@ -1333,6 +1395,9 @@
                     spacePressed = true;
                     canvas.style.cursor = 'grab';
                 }
+            }
+            if (e.key.toLowerCase() === 'h') {
+                toggleHUD();
             }
         });
 
@@ -1423,10 +1488,63 @@
             });
         });
 
-        // Capture Scroll Wheel Events and Forward to Remote Pi
+        // Capture Scroll Wheel Events and Forward to Remote Pi (or perform Zoom if Ctrl is held)
         canvas.addEventListener('wheel', (e) => {
-            // Forward scroll events as button 4 (scroll up) and button 5 (scroll down) to Pi
-            // Forward if not in Space panning, or always if fit mode, or if holding Ctrl
+            if (e.ctrlKey) {
+                e.preventDefault();
+                
+                // Get mouse position relative to canvas before zoom
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                
+                // Calculate percentage coordinates
+                const pctX = mouseX / rect.width;
+                const pctY = mouseY / rect.height;
+                
+                // Save current scroll position
+                const scrollX = viewerContainer.scrollLeft;
+                const scrollY = viewerContainer.scrollTop;
+                
+                // Save old dimensions
+                const oldWidth = rect.width;
+                const oldHeight = rect.height;
+                
+                // Perform zoom calculation
+                const zoomFactor = 1.15;
+                if (e.deltaY < 0) {
+                    zoomScale = Math.min(zoomScale * zoomFactor, 10.0);
+                } else {
+                    zoomScale = Math.max(zoomScale / zoomFactor, 0.15);
+                }
+                
+                // Enforce 1to1 scrollable/panning mode for zoom
+                scaleMode = '1to1';
+                applyScaling();
+                
+                // Update Scale buttons active state in toolbar
+                document.querySelectorAll('[data-scale]').forEach(btn => {
+                    if (btn.dataset.scale === '1to1') {
+                        btn.classList.add('active');
+                    } else {
+                        btn.classList.remove('active');
+                    }
+                });
+
+                // Calculate new dimensions
+                const newRect = canvas.getBoundingClientRect();
+                
+                // Adjust container scroll positions to center zoom on cursor
+                viewerContainer.scrollLeft = scrollX + (pctX * (newRect.width - oldWidth));
+                viewerContainer.scrollTop = scrollY + (pctY * (newRect.height - oldHeight));
+                
+                // Visual status feedback
+                document.getElementById('status-val').textContent = `Connected (Zoom: ${Math.round(zoomScale * 100)}%)`;
+                return;
+            }
+
+            // Otherwise, forward scroll events as button 4 (scroll up) and button 5 (scroll down) to Pi
+            // Forward if not in Space panning, or always if fit mode
             if (scaleMode === 'fit' || !spacePressed) {
                 e.preventDefault();
                 const btn = e.deltaY < 0 ? 4 : 5; // 4 = Up, 5 = Down
@@ -1569,6 +1687,8 @@
                 document.querySelectorAll('[data-scale]').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 scaleMode = btn.dataset.scale;
+                zoomScale = 1.0;
+                document.getElementById('status-val').textContent = 'Connected';
                 applyScaling();
             });
         });
@@ -1634,6 +1754,18 @@
         refreshBtn.addEventListener('click', () => {
             startStream();
         });
+
+        // HUD Toggle / Hide-Show UI Functionality
+        function toggleHUD() {
+            document.body.classList.toggle('hud-hidden');
+            const isHidden = document.body.classList.contains('hud-hidden');
+            if (isHidden && settingsPanel.classList.contains('open')) {
+                settingsPanel.classList.remove('open');
+            }
+        }
+
+        hudToggleBtn.addEventListener('click', toggleHUD);
+        hudRestoreBtn.addEventListener('click', toggleHUD);
 
         // Help Modal Listeners
         helpToggleBtn.addEventListener('click', () => {

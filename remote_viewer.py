@@ -511,7 +511,7 @@ def verify_and_install_remote_dependencies(client, username, password):
     print("[SSH Client] Checking remote dependencies (pyautogui, mss, Pillow)...")
     
     # 1. Check Python packages (mss, Pillow, pyautogui)
-    _, stdout_py, _ = client.exec_command("python3 -c 'import mss, PIL, pyautogui' 2>/dev/null")
+    _, stdout_py, _ = client.exec_command("python3 -c 'import mss, PIL; import importlib.util; exit(0 if importlib.util.find_spec(\"pyautogui\") else 1)' 2>/dev/null")
     if stdout_py.channel.recv_exit_status() != 0:
         print("[SSH Client] Remote Python dependencies (mss/Pillow/pyautogui) missing. Attempting automatic installation...")
         
@@ -592,7 +592,7 @@ def connect_ssh(host, username, password, key_path, display, quality, fps):
         
         # 1. Verify remote pyautogui dependency
         print("[SSH Client] Verifying remote pyautogui dependency...")
-        _, stdout_chk, _ = client.exec_command("python3 -c 'import pyautogui'")
+        _, stdout_chk, _ = client.exec_command(f"DISPLAY={display} XAUTHORITY={remote_xauthority} python3 -c 'import pyautogui'")
         exit_status = stdout_chk.channel.recv_exit_status()
         
         if exit_status != 0:
