@@ -20,7 +20,7 @@ latest_height = 1080
 
 # SSH State variables
 ssh_client = None
-ssh_xdotool_stdin = None
+ssh_input_stdin = None
 capture_thread = None
 capture_running = threading.Event()
 remote_input_enabled = False
@@ -162,9 +162,12 @@ while True:
     img = None
     if sct:
         try:
-            monitor = sct.monitors[1]
-            sct_img = sct.grab(monitor)
-            img = Image.frombytes('RGB', sct_img.size, sct_img.bgra, 'raw', 'BGRX')
+            if sct.monitors:
+                monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+                sct_img = sct.grab(monitor)
+                img = Image.frombytes('RGB', sct_img.size, sct_img.bgra, 'raw', 'BGRX')
+            else:
+                raise Exception("sct.monitors list is empty")
         except Exception as e:
             sys.stderr.write(f"[Remote Capture Error] mss grab failed: {{e}}\\n")
             sys.stderr.flush()
@@ -211,6 +214,118 @@ while True:
         
     # SAFETY CPU RELIEF: Guaranteed sleep to prevent remote Pi CPU from ever saturating
     time.sleep(0.015)
+"""
+    return base64.b64encode(code.encode('utf-8')).decode('utf-8')
+
+# Helper to construct base64 unbuffered remote python input agent using PyAutoGUI
+def get_remote_input_code():
+    code = """import sys, json, pyautogui
+pyautogui.FAILSAFE = False
+pyautogui.PAUSE = 0.0
+
+button_map = {
+    1: 'left',
+    2: 'middle',
+    3: 'right',
+    'left': 'left',
+    'middle': 'middle',
+    'right': 'right'
+}
+
+key_map = {
+    "Return": "enter",
+    "Enter": "enter",
+    "Tab": "tab",
+    "BackSpace": "backspace",
+    "Backspace": "backspace",
+    "Escape": "escape",
+    "Up": "up",
+    "Down": "down",
+    "Left": "left",
+    "Right": "right",
+    "Control_L": "ctrl",
+    "Control_R": "ctrl",
+    "Shift_L": "shift",
+    "Shift_R": "shift",
+    "Alt_L": "alt",
+    "Alt_R": "alt",
+    "Super_L": "win",
+    "Super_R": "win",
+    "Control": "ctrl",
+    "Shift": "shift",
+    "Alt": "alt",
+    "Meta": "win",
+    "ArrowUp": "up",
+    "ArrowDown": "down",
+    "ArrowLeft": "left",
+    "ArrowRight": "right",
+}
+
+for line in sys.stdin:
+    try:
+        event = json.loads(line.strip())
+        etype = event.get("type")
+        if not etype:
+            continue
+            
+        if etype == "mousemove" or etype == "move":
+            x = event.get("x")
+            y = event.get("y")
+            if x is not None and y is not None:
+                pyautogui.moveTo(x, y)
+                
+        elif etype == "mousedown":
+            x = event.get("x")
+            y = event.get("y")
+            btn = button_map.get(event.get("button"), "left")
+            if x is not None and y is not None:
+                pyautogui.moveTo(x, y)
+            pyautogui.mouseDown(button=btn)
+            
+        elif etype == "mouseup":
+            x = event.get("x")
+            y = event.get("y")
+            btn = button_map.get(event.get("button"), "left")
+            if x is not None and y is not None:
+                pyautogui.moveTo(x, y)
+            pyautogui.mouseUp(button=btn)
+            
+        elif etype == "click":
+            x = event.get("x")
+            y = event.get("y")
+            btn = event.get("button")
+            # Map buttons 4 and 5 to scroll up and down
+            if btn == 4:
+                pyautogui.scroll(1)
+            elif btn == 5:
+                pyautogui.scroll(-1)
+            else:
+                btn_str = button_map.get(btn, "left")
+                if x is not None and y is not None:
+                    pyautogui.click(x, y, button=btn_str)
+                else:
+                    pyautogui.click(button=btn_str)
+                    
+        elif etype == "scroll":
+            clicks = event.get("clicks", 0)
+            pyautogui.scroll(clicks)
+            
+        elif etype in ("keydown", "keyup"):
+            key = event.get("key")
+            if key:
+                pyautogui_key = key_map.get(key, key.lower())
+                if etype == "keydown":
+                    pyautogui.keyDown(pyautogui_key)
+                else:
+                    pyautogui.keyUp(pyautogui_key)
+                    
+        elif etype == "type":
+            text = event.get("text", "")
+            pyautogui.write(text)
+            
+    except Exception as e:
+        sys.stderr.write(f"[Remote Input Error] {e}\\n")
+        sys.stderr.flush()
 """
     return base64.b64encode(code.encode('utf-8')).decode('utf-8')
 
@@ -296,14 +411,14 @@ def remote_frame_reader(stdout_stream, running_event):
     finally:
         print("[SSH Reader] Reader terminated.")
 
-# Thread to read remote xdotool standard error diagnostic logs
-def remote_stderr_reader(stderr_stream, running_event):
+# Thread to read remote pyautogui input standard error diagnostic logs
+def remote_input_stderr_reader(stderr_stream, running_event):
     try:
         while running_event.is_set():
             line = stderr_stream.readline()
             if not line:
                 break
-            print(f"[Remote xdotool Error] {line.strip()}")
+            print(f"[Remote Input Error] {line.strip()}")
     except Exception:
         pass
 
@@ -367,19 +482,19 @@ def save_history(target, display, rotation, key_path):
 
 # Cleanup SSH session details cleanly
 def cleanup_ssh():
-    global ssh_client, ssh_xdotool_stdin, capture_thread, capture_running, remote_input_enabled
+    global ssh_client, ssh_input_stdin, capture_thread, capture_running, remote_input_enabled
     
     # 1. Stop capture reader thread
     capture_running.clear()
     remote_input_enabled = False
     
     # 2. Close input stream channel
-    if ssh_xdotool_stdin:
+    if ssh_input_stdin:
         try:
-            ssh_xdotool_stdin.close()
+            ssh_input_stdin.close()
         except Exception:
             pass
-        ssh_xdotool_stdin = None
+        ssh_input_stdin = None
         
     # 3. Close central client socket
     if ssh_client:
@@ -391,17 +506,17 @@ def cleanup_ssh():
         
     print("[SSH Cleanup] Disconnected from target Raspberry Pi.")
 
-# Helper to check and automatically install missing remote dependencies (xdotool, mss, Pillow)
+# Helper to check and automatically install missing remote dependencies (pyautogui, mss, Pillow)
 def verify_and_install_remote_dependencies(client, username, password):
-    print("[SSH Client] Checking remote dependencies (xdotool, mss, Pillow)...")
+    print("[SSH Client] Checking remote dependencies (pyautogui, mss, Pillow)...")
     
-    # 1. Check Python packages (mss, Pillow)
-    _, stdout_py, _ = client.exec_command("python3 -c 'import mss, PIL' 2>/dev/null")
+    # 1. Check Python packages (mss, Pillow, pyautogui)
+    _, stdout_py, _ = client.exec_command("python3 -c 'import mss, PIL; import importlib.util; exit(0 if importlib.util.find_spec(\"pyautogui\") else 1)' 2>/dev/null")
     if stdout_py.channel.recv_exit_status() != 0:
-        print("[SSH Client] Remote Python dependencies (mss/Pillow) missing. Attempting automatic installation...")
+        print("[SSH Client] Remote Python dependencies (mss/Pillow/pyautogui) missing. Attempting automatic installation...")
         
         # Try pip user installation first
-        pip_cmd = "python3 -m pip install mss Pillow --break-system-packages --user"
+        pip_cmd = "python3 -m pip install mss Pillow pyautogui --break-system-packages --user"
         _, stdout_pip, _ = client.exec_command(pip_cmd)
         if stdout_pip.channel.recv_exit_status() != 0:
             print("[SSH Client] Pip installation failed. Attempting system package installation via apt-get...")
@@ -409,36 +524,20 @@ def verify_and_install_remote_dependencies(client, username, password):
             # Fallback to apt-get
             if password:
                 escaped_pass = password.replace("'", "'\\''")
-                apt_cmd = f"echo '{escaped_pass}' | sudo -S apt-get update && echo '{escaped_pass}' | sudo -S apt-get install -y python3-pip python3-pil python3-mss"
+                apt_cmd = f"echo '{escaped_pass}' | sudo -S apt-get update && echo '{escaped_pass}' | sudo -S apt-get install -y python3-pip python3-pil python3-mss python3-pyautogui"
             else:
-                apt_cmd = "sudo -n apt-get update && sudo -n apt-get install -y python3-pip python3-pil python3-mss"
+                apt_cmd = "sudo -n apt-get update && sudo -n apt-get install -y python3-pip python3-pil python3-mss python3-pyautogui"
             
             _, stdout_apt, _ = client.exec_command(apt_cmd)
             stdout_apt.channel.recv_exit_status()
         else:
             print("[SSH Client] Remote Python dependencies installed successfully via pip!")
-            
-    # 2. Check/Install xdotool
-    _, stdout_x, _ = client.exec_command("which xdotool")
-    if stdout_x.channel.recv_exit_status() != 0:
-        print("[SSH Client] 'xdotool' input simulator is missing. Attempting automatic installation...")
-        if password:
-            escaped_pass = password.replace("'", "'\\''")
-            apt_cmd = f"echo '{escaped_pass}' | sudo -S apt-get update && echo '{escaped_pass}' | sudo -S apt-get install -y xdotool"
-        else:
-            apt_cmd = "sudo -n apt-get update && sudo -n apt-get install -y xdotool"
-            
-        _, stdout_apt, _ = client.exec_command(apt_cmd)
-        if stdout_apt.channel.recv_exit_status() == 0:
-            print("[SSH Client] 'xdotool' installed successfully!")
-        else:
-            print("[Warning] Could not install 'xdotool' automatically. Inputs will be disabled unless installed manually.")
     else:
-        print("[SSH Client] 'xdotool' is already installed.")
+        print("[SSH Client] All remote dependencies (pyautogui, mss, Pillow) are already installed.")
 
 # Connect to Raspberry Pi via SSH
 def connect_ssh(host, username, password, key_path, display, quality, fps):
-    global ssh_client, ssh_xdotool_stdin, capture_thread, capture_running, active_display, active_quality, active_fps, remote_input_enabled, remote_xauthority
+    global ssh_client, ssh_input_stdin, capture_thread, capture_running, active_display, active_quality, active_fps, remote_input_enabled, remote_xauthority
     
     # Secure cleanup first
     cleanup_ssh()
@@ -491,28 +590,28 @@ def connect_ssh(host, username, password, key_path, display, quality, fps):
             remote_xauthority = f"{home_dir}/.Xauthority"
         print(f"[SSH Client] Dynamic Xauthority resolved to: {remote_xauthority}")
         
-        # 1. Check if xdotool is installed on remote Pi
-        print("[SSH Client] Verifying remote dependencies...")
-        stdin_chk, stdout_chk, stderr_chk = client.exec_command("which xdotool")
+        # 1. Verify remote pyautogui dependency
+        print("[SSH Client] Verifying remote pyautogui dependency...")
+        _, stdout_chk, _ = client.exec_command(f"DISPLAY={display} XAUTHORITY={remote_xauthority} python3 -c 'import pyautogui'")
         exit_status = stdout_chk.channel.recv_exit_status()
         
         if exit_status != 0:
-            print("[Warning] 'xdotool' was not found on the remote Raspberry Pi.")
+            print("[Warning] 'pyautogui' was not found on the remote host.")
             print("Remote mouse and keyboard control will be disabled.")
-            print("To enable inputs, run 'sudo apt install xdotool' on the Raspberry Pi.")
             remote_input_enabled = False
-            ssh_xdotool_stdin = None
+            ssh_input_stdin = None
         else:
-            # 2. Resolve Xauthority dynamically and spawn persistent input simulator
-            print("[SSH Client] Booting remote persistent xdotool session...")
-            xdotool_cmd = f"DISPLAY={display} XAUTHORITY={remote_xauthority} xdotool -"
-            stdin, stdout, stderr = client.exec_command(xdotool_cmd)
-            ssh_xdotool_stdin = stdin
+            # 2. Boot persistent pyautogui input session
+            print("[SSH Client] Booting remote persistent pyautogui session...")
+            b64_input_code = get_remote_input_code()
+            input_cmd = f"DISPLAY={display} XAUTHORITY={remote_xauthority} python3 -u -c \"import base64; exec(base64.b64decode('{b64_input_code}').decode())\""
+            stdin, stdout, stderr = client.exec_command(input_cmd)
+            ssh_input_stdin = stdin
             remote_input_enabled = True
             
-            # Start background thread to output remote xdotool errors to laptop console
+            # Start background thread to output remote input errors to laptop console
             t_err = threading.Thread(
-                target=remote_stderr_reader,
+                target=remote_input_stderr_reader,
                 args=(stderr, capture_running),
                 daemon=True
             )
@@ -663,7 +762,7 @@ class StreamingHandler(BaseHTTPRequestHandler):
             self.send_error(404, "File not found")
 
     def do_POST(self):
-        global ssh_xdotool_stdin, ssh_client, active_quality, active_fps, active_display, remote_xauthority
+        global ssh_input_stdin, ssh_client, active_quality, active_fps, active_display, remote_xauthority
         client_ip = self.client_address[0]
         
         if self.path == "/connect":
@@ -764,56 +863,21 @@ class StreamingHandler(BaseHTTPRequestHandler):
                 self.send_error(403, "Access Denied: You must request approval from the host to control this session.")
                 return
                 
-            if not ssh_xdotool_stdin:
+            if not ssh_input_stdin:
                 self.send_error(400, "Remote input simulator offline.")
                 return
                 
             content_length = int(self.headers["Content-Length"])
             body = self.rfile.read(content_length)
-            event = json.loads(body.decode())
+            event_data = body.decode()
             
-            etype = event.get("type")
             try:
-                if etype in ("click", "mousedown", "mouseup", "move"):
-                    x = event.get("x")
-                    y = event.get("y")
-                    
-                    if etype == "click":
-                        btn = event.get("button", 1)
-                        cmd = f"mousemove {x} {y}\nclick {btn}\n"
-                    elif etype == "mousedown":
-                        btn = event.get("button", 1)
-                        cmd = f"mousemove {x} {y}\nmousedown {btn}\n"
-                    elif etype == "mouseup":
-                        btn = event.get("button", 1)
-                        cmd = f"mousemove {x} {y}\nmouseup {btn}\n"
-                    elif etype == "move":
-                        cmd = f"mousemove {x} {y}\n"
-                        
-                    ssh_xdotool_stdin.write(cmd)
-                    ssh_xdotool_stdin.flush()
-                    
-                elif etype in ("keydown", "keyup"):
-                    key = event.get("key")
-                    if key:
-                        # Key sym mapping for special chars
-                        key_map = {
-                            "Ctrl": "Control_L",
-                            "Shift": "Shift_L",
-                            "Alt": "Alt_L",
-                            "Meta": "Super_L",
-                            "ArrowUp": "Up",
-                            "ArrowDown": "Down",
-                            "ArrowLeft": "Left",
-                            "ArrowRight": "Right",
-                        }
-                        key = key_map.get(key, key)
-                        cmd = f"{etype} {key}\n"
-                        ssh_xdotool_stdin.write(cmd)
-                        ssh_xdotool_stdin.flush()
-                        
+                # Ensure the JSON payload is a single clean line and stream it to the remote input agent
+                json_line = event_data.strip().replace("\n", " ").replace("\r", "") + "\n"
+                ssh_input_stdin.write(json_line)
+                ssh_input_stdin.flush()
             except Exception as e:
-                print(f"[Input Engine] Channel write failure: {e}")
+                print(f"[Input Engine] PyAutoGUI channel write failure: {e}")
                 
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
