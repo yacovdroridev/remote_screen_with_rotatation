@@ -8,6 +8,9 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
+# Package Version Definition
+VERSION="2.0.0"
+
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN}            📦 UBUNTU REMOTE VIEWER .DEB PACKAGER 📦                  ${NC}"
 echo -e "${CYAN}======================================================================${NC}"
@@ -16,10 +19,13 @@ echo -e "and our custom target screen icon into a standard, distributable"
 echo -e "Ubuntu Debian (${GREEN}.deb${NC}) installer package."
 echo -e "${CYAN}----------------------------------------------------------------------${NC}"
 
-# 1. Verify that compiled binary exists
-if [ ! -f "dist/remote_viewer" ]; then
-    echo -e "${RED}[Error] Compiled standalone binary not found at dist/remote_viewer!${NC}"
-    echo -e "Please ensure PyInstaller build succeeded before running this script."
+# 1. Compile the Go binary executable
+echo -e "${BLUE}[0/4] Compiling standalone Go binary executable...${NC}"
+mkdir -p dist
+go build -o dist/remote_viewer main.go
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}[Error] Go compilation failed!${NC}"
     exit 1
 fi
 
@@ -49,7 +55,7 @@ fi
 echo -e "${BLUE}[3/4] Designing package control configuration metadata...${NC}"
 cat <<EOT > "$BUILD_DIR/DEBIAN/control"
 Package: remote-viewer
-Version: 1.0.0
+Version: $VERSION
 Section: utils
 Priority: optional
 Architecture: amd64
@@ -76,7 +82,7 @@ chmod 644 "$BUILD_DIR/usr/share/applications/remote-viewer.desktop"
 
 # 6. Build the Debian installer package (.deb)
 echo -e "${BLUE}[4/4] Packing folder into standard .deb archive...${NC}"
-dpkg-deb --root-owner-group --build "$BUILD_DIR" remote-viewer_1.0.0_amd64.deb
+dpkg-deb --root-owner-group --build "$BUILD_DIR" "remote-viewer_${VERSION}_amd64.deb"
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}[Error] Debian package build failed.${NC}"
@@ -91,12 +97,12 @@ echo -e "${GREEN}===============================================================
 echo -e "${GREEN}            🎉 DEBIAN PACKAGE COMPILED SUCCESSFULLY! 🎉               ${NC}"
 echo -e "${GREEN}======================================================================${NC}"
 echo -e "Your Ubuntu installer package is ready:"
-echo -e " 👉 ${CYAN}$(pwd)/remote-viewer_1.0.0_amd64.deb${NC}"
+echo -e " 👉 ${CYAN}$(pwd)/remote-viewer_${VERSION}_amd64.deb${NC}"
 echo -e "\n${YELLOW}How to Install on Ubuntu:${NC}"
-echo -e "1. Double-click the ${GREEN}remote-viewer_1.0.0_amd64.deb${NC} file in Files (Finder/Nautilus)"
+echo -e "1. Double-click the ${GREEN}remote-viewer_${VERSION}_amd64.deb${NC} file in Files (Finder/Nautilus)"
 echo -e "   and click ${BLUE}Install${NC} inside Ubuntu Software / App Center."
 echo -e "2. Alternatively, run this terminal install command:"
-echo -e "   ${GREEN}sudo dpkg -i remote-viewer_1.0.0_amd64.deb${NC}"
+echo -e "   ${GREEN}sudo dpkg -i remote-viewer_${VERSION}_amd64.deb${NC}"
 echo -e "\n${YELLOW}How to Launch:${NC}"
 echo -e " * Simply search for ${GREEN}\"Remote Screen Viewer\"${NC} in your Ubuntu Apps Menu"
 echo -e "   and click the custom glowing target icon to boot instantly!"

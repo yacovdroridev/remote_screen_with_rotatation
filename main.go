@@ -19,7 +19,6 @@ import (
 	"sync"
 	"time"
 
-	webview "github.com/webview/webview_go"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -1089,11 +1088,6 @@ func main() {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	// Open native webview window on the main thread (required by webkit2gtk)
-	w := webview.New(true)
-	defer w.Destroy()
-	w.SetTitle("Antigravity Remote Viewer")
-	w.SetSize(1280, 800, webview.HintNone)
-	w.Navigate(url)
-	w.Run()
+	// Open native window (platform-specific implementation)
+	openWindow("Antigravity Remote Viewer", url, 1280, 800)
 }

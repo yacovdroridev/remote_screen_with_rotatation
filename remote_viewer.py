@@ -708,6 +708,20 @@ class StreamingHandler(BaseHTTPRequestHandler):
                 # Connection dropped by client
                 pass
                 
+        elif self.path.startswith("/frame"):
+            if not ssh_client or latest_frame is None:
+                self.send_error(400, "No active remote session or frame captured.")
+                return
+            if not is_owner(client_ip) and client_ip not in approved_ips:
+                self.send_error(403, "Access Denied")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(latest_frame)))
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(latest_frame)
+
         elif self.path == "/status":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -956,7 +970,7 @@ if __name__ == "__main__":
     httpd = ThreadingHTTPServer(server_address, StreamingHandler)
     
     print("\n" + "="*60)
-    print(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS")
+    print(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS (v1.1.0)")
     print("="*60)
     print(f" Server running locally on your laptop.")
     print(f" Port target display: {port}")
@@ -981,7 +995,7 @@ if __name__ == "__main__":
         print("[GUI] Opening native desktop window via pywebview...")
         try:
             webview.create_window(
-                title="Antigravity Remote Viewer",
+                title="Antigravity Remote Viewer (v1.1.0)",
                 url=f"http://localhost:{port}",
                 width=1280,
                 height=720,
