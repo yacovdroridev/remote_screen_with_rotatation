@@ -5,36 +5,43 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"os/signal"
+	"syscall"
 )
 
-// openWindow launches Microsoft Edge (or Chrome as fallback) in app mode.
-// This gives a clean frameless window experience without requiring CGO/WebView2 headers.
+// openWindow launches Microsoft Edge (or Chrome as fallback) in app mode and
+// blocks until the user closes the app (Ctrl+C or process signal).
 func openWindow(title, url string, width, height int) {
+	size := fmt.Sprintf("--window-size=%d,%d", width, height)
+
 	candidates := [][]string{
-		{"cmd", "/C", "start", "msedge", "--app=" + url,
-			"--window-size=" + itoa(width) + "," + itoa(height),
-			"--disable-extensions", "--no-first-run"},
-		{"cmd", "/C", "start", "chrome", "--app=" + url,
-			"--window-size=" + itoa(width) + "," + itoa(height),
-			"--disable-extensions", "--no-first-run"},
-		// Last resort: just open in default browser
-		{"cmd", "/C", "start", url},
+		{"msedge", "--app=" + url, size, "--disable-extensions", "--no-first-run"},
+		{"chrome",  "--app=" + url, size, "--disable-extensions", "--no-first-run"},
+		{"chromium","--app=" + url, size, "--disable-extensions", "--no-first-run"},
 	}
 
+	launched := false
 	for _, args := range candidates {
 		cmd := exec.Command(args[0], args[1:]...)
 		if err := cmd.Start(); err == nil {
-			// Block until the process exits so the HTTP server stays alive
+			log.Printf("[Window] Launched %s in app mode\n", args[0])
+			launched = true
+			// Wait for the browser process to exit
 			cmd.Wait()
 			return
 		}
 	}
-	log.Println("[Window] Could not open a browser window. Navigate to:", url)
-	// Keep the server running so the user can open it manually
-	select {}
-}
 
-func itoa(n int) string {
-	return fmt.Sprintf("%d", n)
+	if !launched {
+		// Last resort: open in default browser via explorer
+		exec.Command("explorer", url).Start()
+		log.Println("[Window] Opened in default browser. Navigate to:", url)
+	}
+
+	// Block until Ctrl+C so the HTTP server stays alive
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	<-sig
 }
