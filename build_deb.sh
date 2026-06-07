@@ -9,7 +9,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Package Version Definition
-VERSION="2.2.0"
+VERSION="2.2.1"
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN}            📦 UBUNTU REMOTE VIEWER .DEB PACKAGER 📦                  ${NC}"

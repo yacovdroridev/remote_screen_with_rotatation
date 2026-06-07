@@ -236,6 +236,42 @@ func (s *AppState) ReadCaptureFrames(stdout io.Reader, stopChan chan struct{}) {
 	}
 }
 
+// startSSHKeepalive sends SSH-level keepalive requests every 5 seconds.
+// If the remote stops responding within 10 seconds the SSH connection is
+// force-closed, which unblocks any blocked ReadCaptureFrames call and
+// triggers the existing reconnect logic.
+// It exits when stopChan is closed (deliberate disconnect / new reconnect).
+func (s *AppState) startSSHKeepalive(client *ssh.Client, stopChan chan struct{}) {
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-stopChan:
+			return
+		case <-t.C:
+			done := make(chan error, 1)
+			go func() {
+				_, _, err := client.Conn.SendRequest("keepalive@openssh.com", true, nil)
+				done <- err
+			}()
+			select {
+			case err := <-done:
+				if err != nil {
+					log.Printf("[Keepalive] SSH keepalive failed: %v — forcing reconnect", err)
+					client.Close()
+					return
+				}
+			case <-time.After(10 * time.Second):
+				log.Println("[Keepalive] SSH keepalive timed out — forcing reconnect")
+				client.Close()
+				return
+			case <-stopChan:
+				return
+			}
+		}
+	}
+}
+
 // startReconnectLoop is called when an unexpected SSH disconnection is detected.
 // It retries the connection every 5 seconds for up to 90 seconds.
 // If the stop channel is closed (deliberate disconnect) it exits immediately.
@@ -369,7 +405,11 @@ func (s *AppState) doReconnect(p *reconnectParams, stopChan chan struct{}) error
 	captureChan := s.captureSession
 	s.reconnecting = false
 	s.reconnectFailed = false
+	kaStop := s.reconnectStop
 	s.Unlock()
+
+	// Start SSH keepalive for the newly reconnected session
+	go s.startSSHKeepalive(client, kaStop)
 
 	// Re-check pyautogui and start input agent
 	chkSess, err := client.NewSession()
@@ -412,19 +452,20 @@ func (s *AppState) doReconnect(p *reconnectParams, stopChan chan struct{}) error
 		if errOut == nil {
 			go func() {
 				s.ReadCaptureFrames(stdout, captureChan)
-				capSess.Close()
-				// Detect unexpected disconnect again
-				s.Lock()
-				unexpected := s.sshClient != nil && !s.reconnecting
-				if unexpected {
-					s.reconnecting = true
-					s.reconnectFailed = false
-					sc := s.reconnectStop
-					s.Unlock()
-					go s.startReconnectLoop(sc)
-				} else {
-					s.Unlock()
-				}
+			capSess.Close()
+			// Detect unexpected disconnect again
+			s.Lock()
+			unexpected := s.sshClient != nil && !s.reconnecting
+			if unexpected {
+				s.reconnecting = true
+				s.reconnectFailed = false
+				s.latestFrame = nil // clear stale frame so /frame returns 400
+				sc := s.reconnectStop
+				s.Unlock()
+				go s.startReconnectLoop(sc)
+			} else {
+				s.Unlock()
+			}
 			}()
 			go capSess.Run(runCmd)
 		}
@@ -921,7 +962,11 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	state.reconnectStop = make(chan struct{})
 	state.reconnecting = false
 	state.reconnectFailed = false
+	kaStop := state.reconnectStop
 	state.Unlock()
+
+	// Start SSH keepalive — detects silent network drops that TCP alone misses
+	go state.startSSHKeepalive(client, kaStop)
 
 	// Install remote deps asynchronously
 	verifyAndInstallDependencies(client, params.Password)
@@ -997,6 +1042,7 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 				if unexpected {
 					state.reconnecting = true
 					state.reconnectFailed = false
+					state.latestFrame = nil // clear stale frame so /frame returns 400
 					sc := state.reconnectStop
 					state.Unlock()
 					log.Println("[Reconnect] Unexpected disconnect — starting reconnect loop.")
@@ -1106,6 +1152,20 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 			go func() {
 				state.ReadCaptureFrames(stdout, captureChan)
 				capSess.Close()
+				// Detect unexpected disconnect (same as handleConnect / doReconnect)
+				state.Lock()
+				unexpected := state.sshClient != nil && !state.reconnecting
+				if unexpected {
+					state.reconnecting = true
+					state.reconnectFailed = false
+					state.latestFrame = nil
+					sc := state.reconnectStop
+					state.Unlock()
+					log.Println("[Reconnect] Unexpected disconnect detected via settings handler.")
+					go state.startReconnectLoop(sc)
+				} else {
+					state.Unlock()
+				}
 			}()
 			go capSess.Run(runCmd)
 		}
@@ -1349,7 +1409,7 @@ func main() {
 	http.HandleFunc("/guest/check_status", handleGuestCheckStatus)
 
 	fmt.Println("\n" + strings.Repeat("=", 60))
-	fmt.Printf(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS (v2.2.0)\n")
+	fmt.Printf(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS (v2.2.1)\n")
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Printf(" Server running locally on your laptop.\n")
 	fmt.Printf(" Port target display: %d\n", port)

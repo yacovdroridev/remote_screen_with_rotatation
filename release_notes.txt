@@ -1,10 +1,10 @@
-# Release v2.2.0
+# Release v2.2.1
 
 Per-server settings persistence and a full connection editor UI.
 
 ---
 
-## What's New in v2.2.0
+## What's New in v2.2.1
 
 * **Per-Server Settings Persistence**: Quality, FPS, scale mode, and rotation are now saved per connection profile and automatically restored when you select a saved connection. Changes made during a session (rotation, scale, quality, FPS) are written back to the profile on disconnect.
 * **Manage Saved Connections**: A new "Manage Saved Connections" button on the portal opens a glass-panel editor. Each saved profile can be edited inline (target, display, rotation, scale mode, quality, FPS, key path) or deleted. Editing a connection target/display key automatically removes the old record to avoid duplicates.
