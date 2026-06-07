@@ -34,6 +34,17 @@ type Profile struct {
 	KeyPath string `json:"key_path,omitempty"`
 }
 
+// Stored parameters for automatic reconnection (in-memory only, never persisted)
+type reconnectParams struct {
+	Target   string
+	Display  string
+	Password string
+	KeyPath  string
+	Quality  int
+	FPS      int
+	Rotation int
+}
+
 // Thread-Safe Application State Container
 type AppState struct {
 	sync.Mutex
@@ -51,6 +62,11 @@ type AppState struct {
 	pendingRequests     map[string]string // clientIP -> guestName
 	approvedIPs         map[string]bool   // clientIP -> true
 	tailscaleAuthURL    string
+	// Reconnection state
+	reconnecting     bool
+	reconnectFailed  bool
+	reconnectStop    chan struct{} // closed to cancel an in-progress reconnect loop
+	lastParams       *reconnectParams
 }
 
 var state = &AppState{
@@ -144,6 +160,14 @@ func (s *AppState) CleanupSSH() {
 	s.Lock()
 	defer s.Unlock()
 
+	// Cancel any in-progress reconnect loop
+	if s.reconnectStop != nil {
+		close(s.reconnectStop)
+		s.reconnectStop = nil
+	}
+	s.reconnecting = false
+	s.reconnectFailed = false
+
 	// Close dynamic capture session
 	if s.captureSession != nil {
 		close(s.captureSession)
@@ -209,7 +233,204 @@ func (s *AppState) ReadCaptureFrames(stdout io.Reader, stopChan chan struct{}) {
 	}
 }
 
-// Base64 captures unbuffered python capturer agent code
+// startReconnectLoop is called when an unexpected SSH disconnection is detected.
+// It retries the connection every 5 seconds for up to 90 seconds.
+// If the stop channel is closed (deliberate disconnect) it exits immediately.
+func (s *AppState) startReconnectLoop(stopChan chan struct{}) {
+	deadline := time.Now().Add(90 * time.Second)
+	attempt := 0
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-stopChan:
+			log.Println("[Reconnect] Cancelled by deliberate disconnect.")
+			return
+		default:
+		}
+
+		attempt++
+		log.Printf("[Reconnect] Attempt %d — waiting 5s before retry...", attempt)
+
+		// Wait 5s or until cancelled
+		select {
+		case <-stopChan:
+			log.Println("[Reconnect] Cancelled by deliberate disconnect.")
+			return
+		case <-time.After(5 * time.Second):
+		}
+
+		// Read params under lock
+		s.Lock()
+		p := s.lastParams
+		s.Unlock()
+
+		if p == nil {
+			log.Println("[Reconnect] No stored params — aborting.")
+			break
+		}
+
+		log.Printf("[Reconnect] Dialling %s...", p.Target)
+		if err := s.doReconnect(p, stopChan); err == nil {
+			log.Println("[Reconnect] Successfully reconnected.")
+			return
+		} else {
+			log.Printf("[Reconnect] Attempt %d failed: %v", attempt, err)
+		}
+	}
+
+	// 90 seconds elapsed without success
+	s.Lock()
+	s.reconnecting = false
+	s.reconnectFailed = true
+	s.Unlock()
+	log.Println("[Reconnect] Timed out after 90 seconds — giving up.")
+}
+
+// doReconnect performs one SSH reconnect attempt and starts capture/input sessions.
+func (s *AppState) doReconnect(p *reconnectParams, stopChan chan struct{}) error {
+	username := "pi"
+	host := p.Target
+	if strings.Contains(p.Target, "@") {
+		parts := strings.SplitN(p.Target, "@", 2)
+		username = parts[0]
+		host = parts[1]
+	}
+	if !strings.Contains(host, ":") {
+		host = host + ":22"
+	}
+
+	var authMethods []ssh.AuthMethod
+	if p.Password != "" {
+		authMethods = append(authMethods, ssh.Password(p.Password))
+	}
+	signers, err := getSSHAuthSigners(p.KeyPath)
+	if err == nil && len(signers) > 0 {
+		authMethods = append(authMethods, ssh.PublicKeys(signers...))
+	}
+	if len(authMethods) == 0 {
+		return fmt.Errorf("no auth methods available")
+	}
+
+	config := &ssh.ClientConfig{
+		User:            username,
+		Auth:            authMethods,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         10 * time.Second,
+	}
+
+	client, err := ssh.Dial("tcp", host, config)
+	if err != nil {
+		return err
+	}
+
+	// Check stop channel — user may have disconnected while we were dialling
+	select {
+	case <-stopChan:
+		client.Close()
+		return fmt.Errorf("cancelled")
+	default:
+	}
+
+	// Resolve Xauthority
+	xauth := ""
+	xauthSess, err := client.NewSession()
+	if err == nil {
+		out, _ := xauthSess.Output("if [ -f /run/user/$(id -u)/gdm/Xauthority ]; then echo /run/user/$(id -u)/gdm/Xauthority; else echo ~/.Xauthority; fi")
+		xauth = strings.TrimSpace(string(out))
+		xauthSess.Close()
+	}
+	if xauth == "" {
+		if username == "root" {
+			xauth = "/root/.Xauthority"
+		} else {
+			xauth = fmt.Sprintf("/home/%s/.Xauthority", username)
+		}
+	}
+
+	// Tear down previous session cleanly (without clearing lastParams or reconnectStop)
+	s.Lock()
+	if s.captureSession != nil {
+		close(s.captureSession)
+		s.captureSession = nil
+	}
+	if s.sshInputStdin != nil {
+		s.sshInputStdin.Close()
+		s.sshInputStdin = nil
+	}
+	if s.sshClient != nil {
+		s.sshClient.Close()
+	}
+	s.sshClient = client
+	s.remoteXauthority = xauth
+	s.captureSession = make(chan struct{})
+	captureChan := s.captureSession
+	s.reconnecting = false
+	s.reconnectFailed = false
+	s.Unlock()
+
+	// Re-check pyautogui and start input agent
+	chkSess, err := client.NewSession()
+	inputEnabled := false
+	if err == nil {
+		chkCmd := fmt.Sprintf("DISPLAY=%s XAUTHORITY=%s python3 -c 'import pyautogui'", p.Display, xauth)
+		if errRun := chkSess.Run(chkCmd); errRun == nil {
+			inputEnabled = true
+		}
+		chkSess.Close()
+	}
+	if inputEnabled {
+		inSess, err := client.NewSession()
+		if err == nil {
+			b64Input := getRemoteInputCode()
+			runCmd := fmt.Sprintf("DISPLAY=%s XAUTHORITY=%s python3 -u -c \"import base64; exec(base64.b64decode('%s').decode())\"", p.Display, xauth, b64Input)
+			stdin, errIn := inSess.StdinPipe()
+			if errIn == nil {
+				s.Lock()
+				s.sshInputStdin = stdin
+				s.remoteInputEnabled = true
+				s.Unlock()
+				go func() {
+					inSess.Run(runCmd)
+					inSess.Close()
+					s.Lock()
+					s.remoteInputEnabled = false
+					s.Unlock()
+				}()
+			}
+		}
+	}
+
+	// Deploy screen capturer agent
+	capSess, err := client.NewSession()
+	if err == nil {
+		b64Cap := getRemoteCaptureCode(p.Display, p.Quality, p.FPS)
+		runCmd := fmt.Sprintf("DISPLAY=%s XAUTHORITY=%s python3 -u -c \"import base64; exec(base64.b64decode('%s').decode())\"", p.Display, xauth, b64Cap)
+		stdout, errOut := capSess.StdoutPipe()
+		if errOut == nil {
+			go func() {
+				s.ReadCaptureFrames(stdout, captureChan)
+				capSess.Close()
+				// Detect unexpected disconnect again
+				s.Lock()
+				unexpected := s.sshClient != nil && !s.reconnecting
+				if unexpected {
+					s.reconnecting = true
+					s.reconnectFailed = false
+					sc := s.reconnectStop
+					s.Unlock()
+					go s.startReconnectLoop(sc)
+				} else {
+					s.Unlock()
+				}
+			}()
+			go capSess.Run(runCmd)
+		}
+	}
+
+	return nil
+}
+
+
 func getRemoteCaptureCode(display string, quality, fps int) string {
 	code := fmt.Sprintf(`import os, sys, time, io
 os.environ['DISPLAY'] = '%s'
@@ -528,14 +749,16 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"connected":     state.sshClient != nil,
-		"input_enabled": state.remoteInputEnabled,
-		"width":         state.latestWidth,
-		"height":        state.latestHeight,
-		"fps":           state.activeFPS,
-		"quality":       state.activeQuality,
-		"is_owner":      isOwner(r.RemoteAddr),
-		"approved":      approved,
+		"connected":        state.sshClient != nil,
+		"input_enabled":    state.remoteInputEnabled,
+		"width":            state.latestWidth,
+		"height":           state.latestHeight,
+		"fps":              state.activeFPS,
+		"quality":          state.activeQuality,
+		"is_owner":         isOwner(r.RemoteAddr),
+		"approved":         approved,
+		"reconnecting":     state.reconnecting,
+		"reconnect_failed": state.reconnectFailed,
 	})
 }
 
@@ -633,6 +856,19 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	state.activeFPS = params.FPS
 	state.captureSession = make(chan struct{})
 	captureChan := state.captureSession
+	// Store params for automatic reconnection (password kept in-memory only)
+	state.lastParams = &reconnectParams{
+		Target:   params.Target,
+		Display:  params.Display,
+		Password: params.Password,
+		KeyPath:  params.KeyPath,
+		Quality:  params.Quality,
+		FPS:      params.FPS,
+		Rotation: params.Rotation,
+	}
+	state.reconnectStop = make(chan struct{})
+	state.reconnecting = false
+	state.reconnectFailed = false
 	state.Unlock()
 
 	// Install remote deps asynchronously
@@ -703,6 +939,19 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 			go func() {
 				state.ReadCaptureFrames(stdout, captureChan)
 				capSess.Close()
+				// Detect unexpected disconnect (not triggered by CleanupSSH)
+				state.Lock()
+				unexpected := state.sshClient != nil && !state.reconnecting
+				if unexpected {
+					state.reconnecting = true
+					state.reconnectFailed = false
+					sc := state.reconnectStop
+					state.Unlock()
+					log.Println("[Reconnect] Unexpected disconnect — starting reconnect loop.")
+					go state.startReconnectLoop(sc)
+				} else {
+					state.Unlock()
+				}
 			}()
 			go capSess.Run(runCmd)
 		}
@@ -1045,7 +1294,7 @@ func main() {
 	http.HandleFunc("/guest/check_status", handleGuestCheckStatus)
 
 	fmt.Println("\n" + strings.Repeat("=", 60))
-	fmt.Printf(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS (v2.0.0)\n")
+	fmt.Printf(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS (v2.1.0)\n")
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Printf(" Server running locally on your laptop.\n")
 	fmt.Printf(" Port target display: %d\n", port)

@@ -1,39 +1,40 @@
-# Release v1.0.0
+# Release v2.1.0
 
-An elegant, high-performance, and secure remote desktop screen viewer designed specifically to stream and control active Raspberry Pi displays (such as `:0` NoMachine or primary physical displays) over secure, auto-tunneling SSH.
-
-This client runs entirely on your local laptop, deploying a tiny unbuffered capture agent to the Pi over SSH and establishing an ultra-low latency input injection pipeline.
+Complete rewrite of the backend in Go (v2.0.0 base) with new SSH resilience features and a cleaner connection experience.
 
 ---
 
-## 🚀 Key Features
+## What's New in v2.1.0
 
-* **📦 Premium Desktop WebView App (Electron-like)**: Powered by `pywebview`, the app launches instantly in a clean, native desktop window (Cocoa on macOS, WebKit2 on Linux), falling back dynamically to your system browser.
-* **🔒 AnyDesk-style P2P Session Approval**: Share your screen session securely with associates without giving them your SSH credentials or private keys. Guests simply request access, and a gorgeous glassmorphism modal slides onto your host screen for 1-click **[Approve] / [Deny]** authorization.
-* **🌐 Embedded Tailscale Mesh VPN**: Integrated Tailscale mesh panel at the bottom of the portal. It features auto-detection, 1-click background daemon installation, and embedded OAuth login flow (runs `tailscale up --ssh` programmatically and generates interactive login URLs).
-* **🔑 Robust Multi-Auth Pipelines**: Full support for standard passwords, custom SSH private key files, and passwordless authentication (scans default system keys like `~/.ssh/id_rsa` and queries active local SSH agents).
-* **💾 Saved Connection Profiles**: MRU-ordered connection profiles loaded as clickable chips at the top of the portal. Connections auto-populate in 1-click. **Passwords are strictly never saved** to disk for your security.
-* **🎮 Figma-Style Viewport Panning & Centering (1:1 Mode)**:
-  - Fixes native web container scrolling locks.
-  - **Spacebar-drag**: Hold down `Space` to turn the cursor into a grabbing hand and pan across high-res screens.
-  - **Middle-Click Dragging**: Press and hold your scroll wheel to pan the viewport instantly.
-  - Full mouse scroll wheel forwarding to remote web pages.
-  - **Help / Interaction Tips Dialog**: Floating interactive help card showing quick interaction tips.
-* **🔄 Zero-CPU Dynamic Rotations**: Switch between `0°`, `90°`, `180°`, and `270°` on-the-fly. Rotations are handled entirely on the local client using GPU-accelerated canvas translations, taking **0% remote CPU**.
+* **Automatic SSH Reconnection**: If the SSH connection drops unexpectedly (network blip, Pi reboot, etc.), the app immediately shows a full-screen reconnecting overlay with a live countdown. It retries every 5 seconds for up to 90 seconds. On success the stream resumes automatically — no manual reconnect needed. After 90 seconds a clear error is shown with a button to return to the connection form.
+* **Silent pyautogui Absence**: When `pyautogui` is not installed on the remote host the app silently enters view-only mode (inputs disabled) without showing a disruptive banner. The condition is logged server-side only.
 
 ---
 
-## 🍏 Dummy-Proof macOS Installation (For your Associate)
+## v2.0.0 — Go Backend Rewrite
 
-To set up and run natively on macOS in one click:
-1. Download the attached **`remote_viewer_macos_setup.zip`** asset from this release page.
-2. Unzip the folder on the Mac.
-3. Simply **double-click the `install_mac.command`** file.
-4. *A Terminal window will open automatically, safely configure a temporary sandbox environment, install dependencies, compile a native macOS **`RemoteViewer.app`**, and clean up all build caches.*
-5. Double-click the generated **`RemoteViewer.app`** to launch it natively!
+A full rewrite of the server in Go replacing the Python backend.
+
+### Key Features
+
+* **Go Native Backend**: Zero-dependency single binary. No Python, no pip, no venv — just run `remote-viewer`.
+* **Native WebView Window**: Uses `webkit2gtk` on Linux and launches Edge/Chrome in `--app=` mode on Windows for a clean borderless desktop app experience.
+* **AnyDesk-style P2P Session Approval**: Share your screen with associates without giving them SSH credentials. Guests request access; a modal slides onto the host screen for 1-click Approve / Deny.
+* **Embedded Tailscale Mesh VPN Panel**: Auto-detection, 1-click background daemon install, and OAuth login flow for zero-config mesh networking.
+* **Robust Multi-Auth**: Passwords, custom key files, default key scan (`~/.ssh/id_rsa`, `id_ed25519`, etc.), and SSH agent forwarding.
+* **Saved Connection Profiles**: MRU-ordered chips in the portal for 1-click reconnect. Passwords are never persisted to disk.
+* **Zero-CPU Rotations**: `0°`, `90°`, `180°`, `270°` handled entirely in the local canvas — 0% remote CPU.
+* **Figma-Style Panning in 1:1 Mode**: Spacebar-drag and middle-click drag for panning high-res screens. Ctrl+scroll zoom.
 
 ---
 
-## 📦 Attached Release Assets
-* **`remote_viewer`**: Compiled Linux standalone executable.
-* **`remote_viewer_macos_setup.zip`**: Complete macOS source, installer scripts, and double-clickable command shortcuts.
+## Install
+
+```bash
+sudo dpkg -i remote-viewer_2.1.0_amd64.deb
+```
+
+Or download the standalone binary and run directly:
+
+```bash
+chmod +x remote_viewer && ./remote_viewer

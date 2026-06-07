@@ -9,7 +9,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Package Version Definition
-VERSION="2.0.0"
+VERSION="2.1.0"
 
 echo -e "${CYAN}======================================================================${NC}"
 echo -e "${CYAN}            📦 UBUNTU REMOTE VIEWER .DEB PACKAGER 📦                  ${NC}"
@@ -22,7 +22,7 @@ echo -e "${CYAN}----------------------------------------------------------------
 # 1. Compile the Go binary executable
 echo -e "${BLUE}[0/4] Compiling standalone Go binary executable...${NC}"
 mkdir -p dist
-go build -o dist/remote_viewer main.go
+go build -o dist/remote_viewer .
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}[Error] Go compilation failed!${NC}"

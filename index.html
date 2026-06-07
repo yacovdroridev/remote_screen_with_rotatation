@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Antigravity Remote Screen Viewer (v2.0.0)</title>
+    <title>Antigravity Remote Screen Viewer (v2.1.0)</title>
     <!-- Modern Premium Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -564,7 +564,7 @@
                     <div class="logo-dot" style="background-color: var(--accent-primary); box-shadow: 0 0 10px var(--accent-primary);"></div>
                     <h2>RASPBERRY PI REMOTE CONNECT</h2>
                 </div>
-                <span style="background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.25); color: var(--accent-primary); font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px;">v2.0.0</span>
+                <span style="background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.25); color: var(--accent-primary); font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px;">v2.1.0</span>
             </div>
             
             <div class="portal-body" id="portal-form">
@@ -694,6 +694,34 @@
         </div>
     </div>
 
+    <!-- SSH Disconnection / Reconnecting Overlay -->
+    <div id="reconnect-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(11, 13, 19, 0.82); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); z-index: 1050; align-items: center; justify-content: center;">
+        <div class="glass-panel" style="padding: 32px 28px; width: 90%; max-width: 360px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 18px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.7);">
+            <!-- Spinner shown while reconnecting -->
+            <div id="reconnect-spinner-wrap" style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+                <div class="spinner" style="width: 44px; height: 44px; border-width: 3px;"></div>
+                <h3 style="color: var(--accent-primary); margin: 0; font-size: 15px; letter-spacing: 0.8px; text-transform: uppercase; text-shadow: 0 0 12px var(--accent-glow);">SSH Disconnected</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5;">
+                    Connection lost. Attempting to reconnect&hellip;
+                </p>
+                <div style="font-size: 11px; color: var(--text-color); background: rgba(0,240,255,0.07); border: 1px solid rgba(0,240,255,0.15); border-radius: 8px; padding: 6px 16px; letter-spacing: 0.5px;">
+                    Giving up in <span id="reconnect-countdown" style="color: var(--accent-primary); font-weight: 700;">90</span>s
+                </div>
+            </div>
+            <!-- Error state shown after 90s timeout -->
+            <div id="reconnect-failed-wrap" style="display: none; flex-direction: column; align-items: center; gap: 14px;">
+                <div style="font-size: 38px;">⚠</div>
+                <h3 style="color: #ff5252; margin: 0; font-size: 15px; letter-spacing: 0.8px; text-transform: uppercase;">Reconnection Failed</h3>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5;">
+                    Could not re-establish the SSH connection after 90 seconds.<br>Please reconnect manually.
+                </p>
+                <button class="btn danger" id="reconnect-manual-btn" style="margin-top: 6px; width: 100%; justify-content: center; height: 38px; font-size: 12px;">
+                    Back to Connection Form
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Help / Panning Shortcuts Modal Overlay -->
     <div id="help-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(11, 13, 19, 0.75); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); z-index: 1100; align-items: center; justify-content: center;">
         <div class="glass-panel" style="padding: 24px; width: 90%; max-width: 420px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 18px; position: relative;">
@@ -709,7 +737,7 @@
                 <div style="background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-weight: 800; font-size: 13px; color: #fff; letter-spacing: 0.5px;">📺 ANTIGRAVITY REMOTE VIEWER</span>
-                        <span style="background: var(--accent-primary); color: #0b0d13; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px; box-shadow: 0 0 10px var(--accent-glow);">v2.0.0</span>
+                        <span style="background: var(--accent-primary); color: #0b0d13; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px; box-shadow: 0 0 10px var(--accent-glow);">v2.1.0</span>
                     </div>
                     <p style="color: var(--text-muted); margin: 0; font-size: 11px; line-height: 1.4;">
                         A sleek, high-performance remote desktop screen viewer designed specifically to stream and inject input control commands over secure, auto-tunneling SSH connections. Developed by the Antigravity Team.
@@ -778,8 +806,8 @@
         </div>
     </div>
 
-    <!-- Dynamic Input Disabled Warning Banner -->
-    <div id="input-warning-banner">
+    <!-- Dynamic Input Disabled Warning Banner (hidden — pyautogui absence is logged server-side only) -->
+    <div id="input-warning-banner" style="display: none !important;">
         ⚠️ Input Redirection Disabled: Please install 'pyautogui' on the remote machine.
     </div>
 
@@ -1179,6 +1207,11 @@
         disconnectBtn.addEventListener('click', () => {
             fetch('/disconnect', { method: 'POST' })
                 .finally(() => {
+                    // Stop reconnect monitoring
+                    isStreaming = false;
+                    stopReconnectPoll();
+                    hideReconnectOverlay();
+
                     // Close settings panel
                     settingsPanel.classList.remove('open');
                     
@@ -1212,6 +1245,100 @@
         let framePending = false;
         let frameBlobUrl = null;
 
+        // --- SSH Reconnection UI state ---
+        let wasReconnecting = false;
+        let reconnectCountdownTimer = null;
+        let reconnectPollTimer = null;
+        let reconnectSecondsLeft = 90;
+        const reconnectOverlayEl   = document.getElementById('reconnect-overlay');
+        const reconnectCountdownEl = document.getElementById('reconnect-countdown');
+        const reconnectSpinnerWrap = document.getElementById('reconnect-spinner-wrap');
+        const reconnectFailedWrap  = document.getElementById('reconnect-failed-wrap');
+
+        function showReconnectSpinner() {
+            reconnectSecondsLeft = 90;
+            reconnectCountdownEl.textContent = reconnectSecondsLeft;
+            reconnectSpinnerWrap.style.display = 'flex';
+            reconnectFailedWrap.style.display  = 'none';
+            reconnectOverlayEl.style.display   = 'flex';
+            clearInterval(reconnectCountdownTimer);
+            reconnectCountdownTimer = setInterval(() => {
+                reconnectSecondsLeft = Math.max(0, reconnectSecondsLeft - 1);
+                reconnectCountdownEl.textContent = reconnectSecondsLeft;
+            }, 1000);
+        }
+
+        function showReconnectFailed() {
+            clearInterval(reconnectCountdownTimer);
+            reconnectSpinnerWrap.style.display = 'none';
+            reconnectFailedWrap.style.display  = 'flex';
+            reconnectOverlayEl.style.display   = 'flex';
+        }
+
+        function hideReconnectOverlay() {
+            clearInterval(reconnectCountdownTimer);
+            reconnectOverlayEl.style.display   = 'none';
+            reconnectSpinnerWrap.style.display = 'flex';
+            reconnectFailedWrap.style.display  = 'none';
+            wasReconnecting = false;
+        }
+
+        function startReconnectPoll() {
+            stopReconnectPoll();
+            reconnectPollTimer = setInterval(checkReconnectStatus, 2000);
+        }
+
+        function stopReconnectPoll() {
+            if (reconnectPollTimer) { clearInterval(reconnectPollTimer); reconnectPollTimer = null; }
+        }
+
+        function checkReconnectStatus() {
+            if (!isStreaming) { stopReconnectPoll(); return; }
+            fetch('/status')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.reconnect_failed) {
+                        if (!wasReconnecting) { wasReconnecting = true; showReconnectSpinner(); }
+                        showReconnectFailed();
+                        stopReconnectPoll();
+                    } else if (data.reconnecting || !data.connected) {
+                        if (!wasReconnecting) { wasReconnecting = true; showReconnectSpinner(); }
+                    } else if (data.connected && wasReconnecting) {
+                        // Back online — refresh view
+                        wasReconnecting = false;
+                        hideReconnectOverlay();
+                        framePending = false;
+                        fetchNextFrame();
+                        if (data.input_enabled === false) {
+                            console.log('[Input] pyautogui not available after reconnect — view-only mode.');
+                            viewOnly = true;
+                        } else {
+                            viewOnly = false;
+                        }
+                    }
+                })
+                .catch(() => {});
+        }
+
+        // "Back to Connection Form" button in the failed state
+        document.getElementById('reconnect-manual-btn').addEventListener('click', () => {
+            hideReconnectOverlay();
+            stopReconnectPoll();
+            isStreaming = false;
+            streamImg.src = '';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            fpsValEl.textContent = '-- FPS';
+            bwValEl.textContent  = '-- KB/s';
+            latencyValEl.textContent = '-- ms';
+            resValEl.textContent = '-- x --';
+            inputWarningBanner.style.display = 'none';
+            overlay.style.opacity = '1';
+            overlay.style.pointerEvents = 'all';
+            portalForm.style.display = 'flex';
+            portalLoading.style.display = 'none';
+            loadHistory();
+        });
+
         // Initialize Stream Connection
         function startStream() {
             isStreaming = true;
@@ -1235,14 +1362,9 @@
                     
                     // Check if input is enabled remotely (presence of pyautogui on remote host)
                     if (data.input_enabled === false) {
-                        inputWarningBanner.style.display = 'block';
-                        viewOnlyBtn.classList.remove('active');
-                        viewOnlyBtn.style.borderColor = '#ff5252';
-                        viewOnlyBtn.style.color = '#ff5252';
-                        viewOnlyBtn.textContent = '⚠️ Inputs Offline';
+                        console.log('[Input] pyautogui not available on remote host — view-only mode.');
                         viewOnly = true;
                     } else {
-                        inputWarningBanner.style.display = 'none';
                         viewOnly = false;
                         viewOnlyBtn.classList.add('active');
                         viewOnlyBtn.style.borderColor = '';
@@ -1254,6 +1376,9 @@
                     
                     // Start low-latency frame fetching loop
                     fetchNextFrame();
+
+                    // Start polling for disconnect/reconnect events
+                    startReconnectPoll();
                 })
                 .catch(err => {
                     console.error("Error reading status:", err);
