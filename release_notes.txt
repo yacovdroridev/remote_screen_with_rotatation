@@ -1,13 +1,21 @@
-# Release v2.1.0
+# Release v2.2.0
 
-Complete rewrite of the backend in Go (v2.0.0 base) with new SSH resilience features and a cleaner connection experience.
+Per-server settings persistence and a full connection editor UI.
 
 ---
 
-## What's New in v2.1.0
+## What's New in v2.2.0
 
-* **Automatic SSH Reconnection**: If the SSH connection drops unexpectedly (network blip, Pi reboot, etc.), the app immediately shows a full-screen reconnecting overlay with a live countdown. It retries every 5 seconds for up to 90 seconds. On success the stream resumes automatically — no manual reconnect needed. After 90 seconds a clear error is shown with a button to return to the connection form.
-* **Silent pyautogui Absence**: When `pyautogui` is not installed on the remote host the app silently enters view-only mode (inputs disabled) without showing a disruptive banner. The condition is logged server-side only.
+* **Per-Server Settings Persistence**: Quality, FPS, scale mode, and rotation are now saved per connection profile and automatically restored when you select a saved connection. Changes made during a session (rotation, scale, quality, FPS) are written back to the profile on disconnect.
+* **Manage Saved Connections**: A new "Manage Saved Connections" button on the portal opens a glass-panel editor. Each saved profile can be edited inline (target, display, rotation, scale mode, quality, FPS, key path) or deleted. Editing a connection target/display key automatically removes the old record to avoid duplicates.
+* **scale_mode in Profile**: Scale mode (`fit` / `fill` / `1:1`) is now included in the `/connect` POST body and saved to `~/.remote_viewer_history.json`.
+
+---
+
+## v2.1.0 — SSH Reconnection & Silent View-Only
+
+* **Automatic SSH Reconnection**: Retries every 5 seconds for up to 90 seconds on unexpected disconnect.
+* **Silent pyautogui Absence**: View-only mode entered silently without a UI banner.
 
 ---
 
@@ -31,7 +39,7 @@ A full rewrite of the server in Go replacing the Python backend.
 ## Install
 
 ```bash
-sudo dpkg -i remote-viewer_2.1.0_amd64.deb
+sudo dpkg -i remote-viewer_2.2.0_amd64.deb
 ```
 
 Or download the standalone binary and run directly:

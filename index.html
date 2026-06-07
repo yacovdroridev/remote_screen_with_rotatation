@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Antigravity Remote Screen Viewer (v2.1.0)</title>
+    <title>Antigravity Remote Screen Viewer (v2.2.0)</title>
     <!-- Modern Premium Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -564,7 +564,7 @@
                     <div class="logo-dot" style="background-color: var(--accent-primary); box-shadow: 0 0 10px var(--accent-primary);"></div>
                     <h2>RASPBERRY PI REMOTE CONNECT</h2>
                 </div>
-                <span style="background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.25); color: var(--accent-primary); font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px;">v2.1.0</span>
+                <span style="background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.25); color: var(--accent-primary); font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px;">v2.2.0</span>
             </div>
             
             <div class="portal-body" id="portal-form">
@@ -578,7 +578,7 @@
 
                 <div class="input-field">
                     <label>SSH Connection Target</label>
-                    <input type="text" class="portal-input" id="conn-target" value="pi@192.168.1.10" placeholder="username@ip_address">
+                    <input type="text" class="portal-input" id="conn-target" value="" placeholder="username@ip_address">
                 </div>
 
                 <!-- Auth Type Toggle Panel -->
@@ -619,6 +619,9 @@
                 </div>
                 <button class="btn active" id="connect-btn" style="width: 100%; justify-content: center; height: 40px; margin-top: 10px; font-size: 13px;">
                     ⚡ Establish Secure Connection
+                </button>
+                <button class="btn" id="manage-connections-btn" style="width: 100%; justify-content: center; height: 34px; margin-top: 4px; font-size: 11px; color: var(--text-muted); border-color: rgba(255,255,255,0.1);">
+                    Manage Saved Connections
                 </button>
             </div>
 
@@ -737,7 +740,7 @@
                 <div style="background: rgba(0, 240, 255, 0.05); border: 1px solid rgba(0, 240, 255, 0.15); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="font-weight: 800; font-size: 13px; color: #fff; letter-spacing: 0.5px;">📺 ANTIGRAVITY REMOTE VIEWER</span>
-                        <span style="background: var(--accent-primary); color: #0b0d13; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px; box-shadow: 0 0 10px var(--accent-glow);">v2.1.0</span>
+                        <span style="background: var(--accent-primary); color: #0b0d13; font-size: 9px; font-weight: 800; padding: 2px 8px; border-radius: 20px; letter-spacing: 0.5px; box-shadow: 0 0 10px var(--accent-glow);">v2.2.0</span>
                     </div>
                     <p style="color: var(--text-muted); margin: 0; font-size: 11px; line-height: 1.4;">
                         A sleek, high-performance remote desktop screen viewer designed specifically to stream and inject input control commands over secure, auto-tunneling SSH connections. Developed by the Antigravity Team.
@@ -933,6 +936,7 @@
         // Core State
         let rotation = 0; // 0, 90, 180, 270
         let scaleMode = 'fit'; // fit, fill, 1to1
+        let currentProfile = null; // profile of the active/last connection
         let zoomScale = 1.0;
         let viewOnly = false;
         let isFS = false;
@@ -1068,18 +1072,24 @@
                         container.style.display = 'flex';
                         
                         // Auto-populate connection form with the most recent profile on load
-                        if (!connTarget.value.trim()) {
-                            const lastP = profiles[0];
-                            connTarget.value = lastP.target || '';
-                            connDisp.value = lastP.display || ':0';
-                            connRot.value = lastP.rotation || '0';
-                            if (lastP.key_path) {
-                                toggleAuthMode('key');
-                                connKey.value = lastP.key_path;
-                            } else {
-                                toggleAuthMode('pwd');
-                                connPass.value = '';
-                            }
+                        const lastP = profiles[0];
+                        connTarget.value = lastP.target || '';
+                        connDisp.value = lastP.display || ':0';
+                        connRot.value = lastP.rotation || '0';
+                        if (lastP.key_path) {
+                            toggleAuthMode('key');
+                            connKey.value = lastP.key_path;
+                        } else {
+                            toggleAuthMode('pwd');
+                            connPass.value = '';
+                        }
+                        if (lastP.quality) { qualitySlider.value = lastP.quality; qualityLbl.textContent = `${lastP.quality}%`; }
+                        if (lastP.fps)     { fpsSlider.value = lastP.fps;         fpsLbl.textContent = `${lastP.fps} FPS`; }
+                        if (lastP.scale_mode) {
+                            scaleMode = lastP.scale_mode;
+                            document.querySelectorAll('[data-scale]').forEach(b => b.classList.remove('active'));
+                            const scaleBtn = document.querySelector(`[data-scale="${lastP.scale_mode}"]`);
+                            if (scaleBtn) scaleBtn.classList.add('active');
                         }
                         
                         profiles.forEach(p => {
@@ -1105,6 +1115,15 @@
                                 } else {
                                     toggleAuthMode('pwd');
                                     connPass.value = '';
+                                }
+
+                                if (p.quality) { qualitySlider.value = p.quality; qualityLbl.textContent = `${p.quality}%`; }
+                                if (p.fps)     { fpsSlider.value = p.fps;         fpsLbl.textContent = `${p.fps} FPS`; }
+                                if (p.scale_mode) {
+                                    scaleMode = p.scale_mode;
+                                    document.querySelectorAll('[data-scale]').forEach(b => b.classList.remove('active'));
+                                    const scaleBtn = document.querySelector(`[data-scale="${p.scale_mode}"]`);
+                                    if (scaleBtn) scaleBtn.classList.add('active');
                                 }
                             });
                             
@@ -1144,7 +1163,8 @@
                 display: display,
                 quality: parseInt(qualitySlider.value),
                 fps: parseInt(fpsSlider.value),
-                rotation: initRot
+                rotation: initRot,
+                scale_mode: scaleMode
             };
 
             if (authMode === 'pwd') {
@@ -1177,6 +1197,17 @@
                             btn.classList.remove('active');
                             if (parseInt(btn.dataset.rotate) === rotation) btn.classList.add('active');
                         });
+
+                        // Record active profile for live save-back
+                        currentProfile = {
+                            target: target,
+                            display: display,
+                            rotation: String(initRot),
+                            quality: parseInt(qualitySlider.value),
+                            fps: parseInt(fpsSlider.value),
+                            scale_mode: scaleMode,
+                            key_path: authMode === 'key' ? connKey.value.trim() : ''
+                        };
 
                         // Start loading stream
                         logoHostLbl.textContent = target.toUpperCase();
@@ -1236,6 +1267,10 @@
                     portalForm.style.display = 'flex';
                     portalLoading.style.display = 'none';
                     
+                    // Save final quality/fps/scale back to profile before returning to portal
+                    saveCurrentProfile();
+                    currentProfile = null;
+
                     // Reload connection profiles chips list
                     loadHistory();
                 });
@@ -1862,6 +1897,7 @@
                 btn.classList.add('active');
                 rotation = parseInt(btn.dataset.rotate);
                 applyScaling();
+                saveCurrentProfile();
             });
         });
 
@@ -1874,6 +1910,7 @@
                 zoomScale = 1.0;
                 document.getElementById('status-val').textContent = 'Connected';
                 applyScaling();
+                saveCurrentProfile();
             });
         });
 
@@ -1902,6 +1939,21 @@
                     fps: parseInt(fpsSlider.value)
                 })
             }).catch(err => console.error("Error updating settings:", err));
+        }
+
+        function saveCurrentProfile() {
+            if (!currentProfile) return;
+            const p = Object.assign({}, currentProfile, {
+                rotation: String(rotation),
+                quality: parseInt(qualitySlider.value),
+                fps: parseInt(fpsSlider.value),
+                scale_mode: scaleMode
+            });
+            fetch('/history', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(p)
+            }).catch(err => console.error('saveCurrentProfile error:', err));
         }
 
         // View Only Mode
@@ -2205,6 +2257,199 @@
         
         // Start latency monitoring
         pingInterval = setInterval(measureLatency, 2000);
+        // Connection Editor Modal
+        const connEditorModal = document.getElementById('conn-editor-modal');
+        const connEditorList  = document.getElementById('conn-editor-list');
+        const connEditorClose = document.getElementById('conn-editor-close');
+        const manageBtnEl     = document.getElementById('manage-connections-btn');
+
+        function openConnEditor() {
+            connEditorModal.style.display = 'flex';
+            fetch('/history')
+                .then(r => r.json())
+                .then(profiles => renderConnEditorList(profiles || []))
+                .catch(() => { connEditorList.innerHTML = '<p style="color:#ff5252;font-size:12px;text-align:center;">Failed to load profiles.</p>'; });
+        }
+
+        connEditorClose.addEventListener('click', () => { connEditorModal.style.display = 'none'; });
+        connEditorModal.addEventListener('click', (e) => { if (e.target === connEditorModal) connEditorModal.style.display = 'none'; });
+        if (manageBtnEl) manageBtnEl.addEventListener('click', openConnEditor);
+
+        function renderConnEditorList(profiles) {
+            connEditorList.innerHTML = '';
+            if (!profiles.length) {
+                connEditorList.innerHTML = '<p style="color:var(--text-muted);font-size:12px;text-align:center;margin:20px 0;">No saved connections.</p>';
+                return;
+            }
+            profiles.forEach((p, idx) => {
+                const card = document.createElement('div');
+                card.style.cssText = 'background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px;';
+
+                // -- View mode --
+                const viewDiv = document.createElement('div');
+                viewDiv.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+
+                const titleRow = document.createElement('div');
+                titleRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;';
+
+                const titleLbl = document.createElement('span');
+                titleLbl.style.cssText = 'font-size:13px;font-weight:700;color:var(--text-color);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+                titleLbl.textContent = p.target;
+
+                const btnRow = document.createElement('div');
+                btnRow.style.cssText = 'display:flex;gap:6px;flex-shrink:0;';
+
+                const editBtn = document.createElement('button');
+                editBtn.className = 'btn';
+                editBtn.style.cssText = 'font-size:10px;padding:3px 10px;height:26px;';
+                editBtn.textContent = 'Edit';
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn danger';
+                delBtn.style.cssText = 'font-size:10px;padding:3px 10px;height:26px;';
+                delBtn.textContent = 'Delete';
+
+                btnRow.appendChild(editBtn);
+                btnRow.appendChild(delBtn);
+                titleRow.appendChild(titleLbl);
+                titleRow.appendChild(btnRow);
+
+                const metaRow = document.createElement('div');
+                metaRow.style.cssText = 'font-size:11px;color:var(--text-muted);display:flex;flex-wrap:wrap;gap:4px;';
+                const meta = [
+                    p.display || ':0',
+                    `rot: ${p.rotation || '0'}\u00b0`,
+                    p.scale_mode ? `scale: ${p.scale_mode}` : '',
+                    p.quality    ? `${p.quality}%`          : '',
+                    p.fps        ? `${p.fps} fps`           : '',
+                    p.key_path   ? 'key auth'               : 'pwd auth'
+                ].filter(Boolean).join(' \u00b7 ');
+                metaRow.textContent = meta;
+
+                viewDiv.appendChild(titleRow);
+                viewDiv.appendChild(metaRow);
+
+                // -- Edit mode --
+                const editDiv = document.createElement('div');
+                editDiv.style.cssText = 'display:none;flex-direction:column;gap:8px;';
+
+                function makeEditorField(label, fieldId, val, options) {
+                    const wrap = document.createElement('div');
+                    wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;';
+                    const lbl = document.createElement('label');
+                    lbl.style.cssText = 'font-size:10px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.8px;';
+                    lbl.textContent = label;
+                    let inp;
+                    if (options) {
+                        inp = document.createElement('select');
+                        inp.className = 'portal-input';
+                        inp.style.cssText = 'height:32px;padding:4px 10px;font-size:12px;';
+                        options.forEach(([v, t]) => {
+                            const opt = document.createElement('option');
+                            opt.value = v; opt.textContent = t;
+                            if (String(v) === String(val)) opt.selected = true;
+                            inp.appendChild(opt);
+                        });
+                    } else {
+                        inp = document.createElement('input');
+                        inp.type = 'text';
+                        inp.className = 'portal-input';
+                        inp.style.cssText = 'height:32px;padding:4px 10px;font-size:12px;';
+                        inp.value = val !== undefined && val !== null ? String(val) : '';
+                    }
+                    inp.id = fieldId;
+                    wrap.appendChild(lbl);
+                    wrap.appendChild(inp);
+                    return wrap;
+                }
+
+                editDiv.appendChild(makeEditorField('Target',      `ced-target-${idx}`,   p.target));
+                editDiv.appendChild(makeEditorField('Display',     `ced-display-${idx}`,  p.display || ':0'));
+                editDiv.appendChild(makeEditorField('Rotation',    `ced-rotation-${idx}`, p.rotation || '0',   [['0','0\u00b0'],['90','90\u00b0'],['180','180\u00b0'],['270','270\u00b0']]));
+                editDiv.appendChild(makeEditorField('Scale Mode',  `ced-scale-${idx}`,    p.scale_mode || 'fit',[['fit','Fit'],['fill','Fill'],['1to1','1:1']]));
+                editDiv.appendChild(makeEditorField('Quality (1-100)', `ced-quality-${idx}`, p.quality || 70));
+                editDiv.appendChild(makeEditorField('FPS',         `ced-fps-${idx}`,      p.fps || 5));
+                editDiv.appendChild(makeEditorField('Key Path (blank = password)', `ced-keypath-${idx}`, p.key_path || ''));
+
+                const editActions = document.createElement('div');
+                editActions.style.cssText = 'display:flex;gap:8px;margin-top:4px;';
+
+                const saveBtn = document.createElement('button');
+                saveBtn.className = 'btn active';
+                saveBtn.style.cssText = 'flex:1;justify-content:center;height:32px;font-size:12px;';
+                saveBtn.textContent = 'Save';
+
+                const cancelEditBtn = document.createElement('button');
+                cancelEditBtn.className = 'btn';
+                cancelEditBtn.style.cssText = 'flex:1;justify-content:center;height:32px;font-size:12px;';
+                cancelEditBtn.textContent = 'Cancel';
+
+                editActions.appendChild(saveBtn);
+                editActions.appendChild(cancelEditBtn);
+                editDiv.appendChild(editActions);
+
+                card.appendChild(viewDiv);
+                card.appendChild(editDiv);
+                connEditorList.appendChild(card);
+
+                // Wire buttons
+                editBtn.addEventListener('click', () => { viewDiv.style.display = 'none'; editDiv.style.display = 'flex'; });
+                cancelEditBtn.addEventListener('click', () => { editDiv.style.display = 'none'; viewDiv.style.display = 'flex'; });
+
+                delBtn.addEventListener('click', () => {
+                    if (!confirm(`Delete connection to "${p.target}"?`)) return;
+                    fetch('/history', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ target: p.target, display: p.display || ':0' })
+                    })
+                    .then(() => fetch('/history').then(r => r.json()).then(renderConnEditorList))
+                    .catch(err => console.error('delete profile error:', err));
+                });
+
+                saveBtn.addEventListener('click', () => {
+                    const updated = {
+                        target:     document.getElementById(`ced-target-${idx}`).value.trim(),
+                        display:    document.getElementById(`ced-display-${idx}`).value.trim() || ':0',
+                        rotation:   document.getElementById(`ced-rotation-${idx}`).value,
+                        scale_mode: document.getElementById(`ced-scale-${idx}`).value,
+                        quality:    parseInt(document.getElementById(`ced-quality-${idx}`).value) || 70,
+                        fps:        parseInt(document.getElementById(`ced-fps-${idx}`).value) || 5,
+                        key_path:   document.getElementById(`ced-keypath-${idx}`).value.trim()
+                    };
+                    if (!updated.target) return;
+                    const keyChanged = updated.target !== p.target || updated.display !== (p.display || ':0');
+                    const doSave = () => fetch('/history', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(updated)
+                    }).then(() => fetch('/history').then(r => r.json()).then(renderConnEditorList))
+                      .catch(err => console.error('save profile error:', err));
+
+                    if (keyChanged) {
+                        fetch('/history', {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ target: p.target, display: p.display || ':0' })
+                        }).then(doSave).catch(err => console.error('rename profile error:', err));
+                    } else {
+                        doSave();
+                    }
+                });
+            });
+        }
+
     </script>
+    <!-- Connection Editor Modal -->
+    <div id="conn-editor-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(11, 13, 19, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); z-index: 1200; align-items: center; justify-content: center;">
+        <div class="glass-panel" style="padding: 24px; width: 90%; max-width: 480px; max-height: 80vh; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 16px; position: relative;">
+            <button id="conn-editor-close" style="position: absolute; top: 16px; right: 16px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; transition: color 0.2s;">&#x2715;</button>
+            <h3 style="color: #fff; margin: 0; font-size: 15px; letter-spacing: 0.5px; text-transform: uppercase;">Saved Connections</h3>
+            <div id="conn-editor-list" style="display: flex; flex-direction: column; gap: 10px; overflow-y: auto; padding-right: 4px; max-height: calc(80vh - 100px);">
+                <!-- Profile cards rendered by JS -->
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

@@ -28,10 +28,13 @@ var indexHTML []byte
 
 // Connection Profile Structure (passwords strictly never stored!)
 type Profile struct {
-	Target  string `json:"target"`
-	Display string `json:"display"`
-	Rotation string `json:"rotation"`
-	KeyPath string `json:"key_path,omitempty"`
+	Target    string `json:"target"`
+	Display   string `json:"display"`
+	Rotation  string `json:"rotation"`
+	KeyPath   string `json:"key_path,omitempty"`
+	Quality   int    `json:"quality,omitempty"`
+	FPS       int    `json:"fps,omitempty"`
+	ScaleMode string `json:"scale_mode,omitempty"`
 }
 
 // Stored parameters for automatic reconnection (in-memory only, never persisted)
@@ -762,21 +765,70 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Delete a connection profile by target+display key
+func deleteHistory(target, display string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	history := loadHistory()
+	filtered := make([]Profile, 0, len(history))
+	for _, p := range history {
+		if p.Target != target || p.Display != display {
+			filtered = append(filtered, p)
+		}
+	}
+	data, err := json.MarshalIndent(filtered, "", "    ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(filepath.Join(home, ".remote_viewer_history.json"), data, 0644)
+}
+
 func handleHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	history := loadHistory()
-	json.NewEncoder(w).Encode(history)
+	switch r.Method {
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(loadHistory())
+
+	case http.MethodPut:
+		// Upsert a profile (create or update by target+display key)
+		var p Profile
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		saveHistory(p)
+		w.Write([]byte(`{"status":"ok"}`))
+
+	case http.MethodDelete:
+		// Delete a profile by target+display
+		var req struct {
+			Target  string `json:"target"`
+			Display string `json:"display"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		deleteHistory(req.Target, req.Display)
+		w.Write([]byte(`{"status":"ok"}`))
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 func handleConnect(w http.ResponseWriter, r *http.Request) {
 	var params struct {
-		Target   string `json:"target"`
-		Display  string `json:"display"`
-		Password string `json:"password"`
-		KeyPath  string `json:"key_path"`
-		Quality  int    `json:"quality"`
-		FPS      int    `json:"fps"`
-		Rotation int `json:"rotation"`
+		Target    string `json:"target"`
+		Display   string `json:"display"`
+		Password  string `json:"password"`
+		KeyPath   string `json:"key_path"`
+		Quality   int    `json:"quality"`
+		FPS       int    `json:"fps"`
+		Rotation  int    `json:"rotation"`
+		ScaleMode string `json:"scale_mode"`
 	}
 
 	log.Println("[Connect] Received /connect request")
@@ -958,10 +1010,13 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	saveHistory(Profile{
-		Target:   params.Target,
-		Display:  params.Display,
-		Rotation: strconv.Itoa(params.Rotation),
-		KeyPath:  params.KeyPath,
+		Target:    params.Target,
+		Display:   params.Display,
+		Rotation:  strconv.Itoa(params.Rotation),
+		KeyPath:   params.KeyPath,
+		Quality:   params.Quality,
+		FPS:       params.FPS,
+		ScaleMode: params.ScaleMode,
 	})
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1294,7 +1349,7 @@ func main() {
 	http.HandleFunc("/guest/check_status", handleGuestCheckStatus)
 
 	fmt.Println("\n" + strings.Repeat("=", 60))
-	fmt.Printf(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS (v2.1.0)\n")
+	fmt.Printf(" ANTIGRAVITY SSH REMOTE VIEWER - SUCCESS (v2.2.0)\n")
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Printf(" Server running locally on your laptop.\n")
 	fmt.Printf(" Port target display: %d\n", port)
