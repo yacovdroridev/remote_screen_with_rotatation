@@ -120,7 +120,7 @@ echo -e "      ${GREEN}✓ Pool updated (older versions pruned).${NC}"
 echo -e "${BLUE}[5/7] Generating Packages index...${NC}"
 cd "$WORK_DIR"
 dpkg-scanpackages --arch "$ARCH" pool/ > "dists/${SUITE}/${COMPONENT}/binary-${ARCH}/Packages"
-gzip -9 -k "dists/${SUITE}/${COMPONENT}/binary-${ARCH}/Packages"
+gzip -9 -k -f "dists/${SUITE}/${COMPONENT}/binary-${ARCH}/Packages"
 echo -e "      ${GREEN}✓ Packages and Packages.gz generated.${NC}"
 
 # ── Step 6: Generate and sign Release file ──────────────────
