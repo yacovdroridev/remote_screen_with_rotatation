@@ -1,0 +1,193 @@
+name: Build & Publish Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write   # upload release assets + push formula/apt updates
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Linux — build .deb and update the self-hosted APT repository
+  # ─────────────────────────────────────────────────────────────────────────
+  linux:
+    name: Linux (.deb + APT repo)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            libgtk-3-dev libwebkit2gtk-4.1-dev \
+            dpkg-dev apt-utils apt-ftparchive
+
+      - name: Patch version
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          sed -i "s/^VERSION=.*/VERSION=\"${VER}\"/" build_deb.sh
+
+      - name: Build .deb
+        run: bash build_deb.sh
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            remote-viewer_*.deb
+            dist/remote_viewer
+
+      - name: Update APT repository (GitHub Pages)
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          GITHUB_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+        run: bash publish_apt.sh
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Windows — NSIS installer + optional WinGet submission
+  # ─────────────────────────────────────────────────────────────────────────
+  windows:
+    name: Windows (NSIS installer + WinGet)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Windows binary
+        env:
+          CGO_ENABLED: "0"
+          GOOS: windows
+          GOARCH: amd64
+        shell: bash
+        run: go build -ldflags="-s -w" -o remote_viewer.exe .
+
+      - name: Install NSIS
+        run: choco install nsis --yes --no-progress
+
+      - name: Patch version and build installer
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          sed -i "s/!define APP_VERSION.*/!define APP_VERSION \"${VER}\"/" installer.nsi
+          makensis installer.nsi
+          mv AntigravityRemoteViewer-Setup.exe "AntigravityRemoteViewer-v${VER}-Setup.exe"
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            AntigravityRemoteViewer-v*-Setup.exe
+            remote_viewer.exe
+
+      # WinGet: auto-submit PR to microsoft/winget-pkgs on each release.
+      # Requires a PAT (with repo scope on your winget-pkgs fork) stored as
+      # the WINGET_TOKEN secret. The initial PR still needs Microsoft review;
+      # subsequent update PRs are usually auto-merged within minutes.
+      - name: Submit to WinGet
+        if: ${{ secrets.WINGET_TOKEN != '' }}
+        uses: vedantmgoyal9/winget-releaser@v2
+        with:
+          identifier: Antigravity.RemoteViewer
+          token: ${{ secrets.WINGET_TOKEN }}
+          installers-regex: 'AntigravityRemoteViewer-v.*-Setup\.exe$'
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # macOS — universal binary + Homebrew formula update
+  # ─────────────────────────────────────────────────────────────────────────
+  macos:
+    name: macOS (binary + Homebrew formula)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Build a fat binary for both Apple Silicon and Intel
+      - name: Build macOS binaries
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          GOARCH=amd64 go build -ldflags="-s -w" -o remote_viewer_macos_amd64 .
+          GOARCH=arm64 go build -ldflags="-s -w" -o remote_viewer_macos_arm64 .
+          lipo -create -output remote_viewer_macos \
+            remote_viewer_macos_amd64 remote_viewer_macos_arm64
+
+      - name: Compute SHA256
+        id: sha
+        run: echo "hash=$(shasum -a 256 remote_viewer_macos | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload binary to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: remote_viewer_macos
+
+      # Commit an updated Homebrew formula to main so that
+      # `brew tap yacovdroridev/remote_screen_with_rotatation` works immediately.
+      - name: Checkout main branch for formula update
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main-branch
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew formula
+        env:
+          SHA256: ${{ steps.sha.outputs.hash }}
+          TAG:    ${{ github.ref_name }}
+        working-directory: main-branch
+        run: |
+          VER="${TAG#v}"
+          URL="https://github.com/yacovdroridev/remote_screen_with_rotatation/releases/download/${TAG}/remote_viewer_macos"
+          mkdir -p Formula
+          cat > Formula/remote-viewer.rb <<FORMULA
+          class RemoteViewer < Formula
+            desc "High-performance SSH remote desktop viewer for Raspberry Pi"
+            homepage "https://github.com/yacovdroridev/remote_screen_with_rotatation"
+            version "${VER}"
+            url "${URL}"
+            sha256 "${SHA256}"
+
+            def install
+              bin.install "remote_viewer_macos" => "remote-viewer"
+            end
+
+            def caveats
+              <<~EOS
+                Launch with:
+                  remote-viewer
+
+                The viewer opens in your default browser.
+                Use Chrome/Chromium for the best app-mode experience.
+              EOS
+            end
+
+            test do
+              assert_predicate bin/"remote-viewer", :exist?
+            end
+          end
+          FORMULA
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/remote-viewer.rb
+          git diff --staged --quiet || \
+            git commit -m "brew: update remote-viewer formula to v${VER}"
+          git push

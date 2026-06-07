@@ -6,9 +6,14 @@ Unicode True
 ;-----------------------------------------------------------------------
 ; General
 ;-----------------------------------------------------------------------
+; Allow version to be overridden at build time:
+;   makensis /DAPP_VERSION=2.1.0 installer.nsi
+!ifndef APP_VERSION
+    !define APP_VERSION "2.1.0"
+!endif
+
 !define APP_NAME      "Antigravity Remote Viewer"
 !define APP_EXE       "remote_viewer.exe"
-!define APP_VERSION   "2.0.0"
 !define PUBLISHER     "Antigravity Team"
 !define INSTALL_DIR   "$PROGRAMFILES64\${APP_NAME}"
 !define REG_UNINSTALL "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"

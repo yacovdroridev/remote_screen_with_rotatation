@@ -6,6 +6,10 @@ set -e
 #  Builds .deb, updates the GitHub Pages APT repo, and
 #  pushes so users can install/upgrade via:
 #    sudo apt update && sudo apt install remote-viewer
+#
+#  CI mode (GitHub Actions):
+#    Set APT_SIGNING_KEY  — armoured GPG private key (gpg --armor --export-secret-keys)
+#    Set GITHUB_TOKEN     — automatically provided by Actions, used for git push
 # ============================================================
 
 RED='\033[0;31m'
@@ -24,6 +28,14 @@ SUITE="stable"
 COMPONENT="main"
 ARCH="amd64"
 WORK_DIR="/tmp/apt-repo-publish-$$"
+PROJECT_DIR="$(pwd)"
+
+# Build the authenticated remote URL (works locally and in CI)
+if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ]; then
+    REMOTE_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+else
+    REMOTE_URL="$(git remote get-url origin)"
+fi
 
 echo -e "${CYAN}================================================================${NC}"
 echo -e "${CYAN}           APT REPOSITORY PUBLISHER - Remote Viewer             ${NC}"
@@ -34,13 +46,24 @@ VERSION=$(grep '^VERSION=' build_deb.sh | cut -d'"' -f2)
 DEB_FILE="remote-viewer_${VERSION}_amd64.deb"
 echo -e "${BLUE}[0/7] Version: ${GREEN}${VERSION}${NC}"
 
-# ── Step 1: Build the .deb ──────────────────────────────────
+# ── Step 1: Build the .deb (skip if already built by CI) ────
 echo -e "${BLUE}[1/7] Building .deb package...${NC}"
-bash build_deb.sh > /dev/null
-echo -e "      ${GREEN}✓ ${DEB_FILE} built.${NC}"
+if [ ! -f "$DEB_FILE" ]; then
+    bash build_deb.sh > /dev/null
+    echo -e "      ${GREEN}✓ ${DEB_FILE} built.${NC}"
+else
+    echo -e "      ${GREEN}✓ ${DEB_FILE} already exists, skipping build.${NC}"
+fi
 
 # ── Step 2: Ensure GPG signing key exists ───────────────────
 echo -e "${BLUE}[2/7] Checking GPG signing key...${NC}"
+
+# CI mode: import the key from the environment variable
+if [ -n "${APT_SIGNING_KEY:-}" ]; then
+    echo -e "      ${BLUE}CI mode: importing GPG key from environment...${NC}"
+    echo "$APT_SIGNING_KEY" | gpg --batch --import
+fi
+
 GPG_KEY_ID=$(gpg --list-secret-keys --with-colons 2>/dev/null \
     | awk -F: '/^sec/ {print $5; exit}')
 
@@ -53,7 +76,7 @@ if [ -z "$GPG_KEY_ID" ]; then
         | awk -F: '/^sec/ {print $5; exit}')
     echo -e "      ${GREEN}✓ Generated key: ${GPG_KEY_ID}${NC}"
 else
-    echo -e "      ${GREEN}✓ Using existing key: ${GPG_KEY_ID}${NC}"
+    echo -e "      ${GREEN}✓ Using key: ${GPG_KEY_ID}${NC}"
 fi
 
 # Export armoured public key (users import this once)
@@ -64,18 +87,16 @@ echo -e "      ${GREEN}✓ Public key exported to KEY.gpg${NC}"
 echo -e "${BLUE}[3/7] Syncing gh-pages branch...${NC}"
 rm -rf "$WORK_DIR"
 
-# Try to clone the gh-pages branch; create it fresh if it doesn't exist
-if git ls-remote --exit-code --heads origin gh-pages > /dev/null 2>&1; then
-    git clone --quiet --single-branch --branch gh-pages \
-        "$(git remote get-url origin)" "$WORK_DIR"
+if git ls-remote --exit-code --heads "$REMOTE_URL" gh-pages > /dev/null 2>&1; then
+    git clone --quiet --single-branch --branch gh-pages "$REMOTE_URL" "$WORK_DIR"
     echo -e "      ${GREEN}✓ Cloned existing gh-pages branch.${NC}"
 else
     mkdir -p "$WORK_DIR"
     cd "$WORK_DIR"
     git init --quiet
-    git remote add origin "$(git -C "$OLDPWD" remote get-url origin)"
+    git remote add origin "$REMOTE_URL"
     git checkout --quiet --orphan gh-pages
-    cd "$OLDPWD"
+    cd "$PROJECT_DIR"
     echo -e "      ${GREEN}✓ Created new orphan gh-pages branch.${NC}"
 fi
 
@@ -127,13 +148,13 @@ echo -e "      ${GREEN}✓ Release, Release.gpg, and InRelease signed.${NC}"
 # ── Step 7: Commit and push gh-pages ────────────────────────
 echo -e "${BLUE}[7/7] Publishing to GitHub Pages...${NC}"
 cd "$WORK_DIR"
-git config user.name  "$(git -C "$OLDPWD" config user.name  2>/dev/null || echo 'APT Publisher')"
-git config user.email "$(git -C "$OLDPWD" config user.email 2>/dev/null || echo 'apt@remote-viewer')"
+git config user.name  "$(git -C "$PROJECT_DIR" config user.name  2>/dev/null || echo 'APT Publisher')"
+git config user.email "$(git -C "$PROJECT_DIR" config user.email 2>/dev/null || echo 'apt@remote-viewer')"
 
 git add -A
 git commit --quiet -m "apt: publish remote-viewer v${VERSION}"
 git push --quiet origin gh-pages --force
-cd "$OLDPWD"
+cd "$PROJECT_DIR"
 
 # Cleanup
 rm -rf "$WORK_DIR"
