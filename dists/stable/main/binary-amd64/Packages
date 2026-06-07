@@ -1,0 +1,14 @@
+Package: remote-viewer
+Version: 2.1.0
+Architecture: amd64
+Maintainer: Yacov Drori <yacovdrori@gmail.com>
+Filename: pool/main/remote-viewer_2.1.0_amd64.deb
+Size: 5535380
+MD5sum: 1fdd1782249d6224c899d6947431e01f
+SHA1: 85c6f8cd09e021bdbeb356748c8aeb04ac342772
+SHA256: 082fc3f44e00b70223374fc16067a4d0e88b28dae67da4a8e6925c2076a27f71
+Section: utils
+Priority: optional
+Description: Sleek remote display viewer and input injector for Raspberry Pi over SSH.
+ Includes embedded Tailscale mesh VPN setup panel and AnyDesk-style P2P host-modal approvals.
+
