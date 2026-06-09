@@ -1,12 +1,12 @@
 Package: remote-viewer
-Version: 2.2.1
+Version: 2.3.0
 Architecture: amd64
 Maintainer: Yacov Drori <yacovdrori@gmail.com>
-Filename: pool/main/remote-viewer_2.2.1_amd64.deb
-Size: 5544898
-MD5sum: 53e320152e6c232b95adfd66e249f767
-SHA1: 6a70acbd4271547894e33e6b782b4020a6c33aff
-SHA256: 8d303b1e071bc43601c9b128c7408fba5a4f432291e457d2d602ad6fe67072c8
+Filename: pool/main/remote-viewer_2.3.0_amd64.deb
+Size: 5614336
+MD5sum: 0f234c3a026ac2343e180dbf91daf8e9
+SHA1: 2ee75e5438be8b8190ea31ad96e2f86008a6d47b
+SHA256: 598d00e08db0cffd4415837c875db4842af3de72cd07f39b2c3b4999bcdfeb7c
 Section: utils
 Priority: optional
 Description: Sleek remote display viewer and input injector for Raspberry Pi over SSH.
